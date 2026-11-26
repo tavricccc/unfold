@@ -5,6 +5,7 @@ import { Icon, rich } from '../icons';
 import type { Lesson, LessonRecord } from '../lesson';
 import { BubbleSort } from '../widgets/BubbleSort';
 import { HtmlWidget } from '../widgets/HtmlWidget';
+import { PlotWidget } from '../widgets/Plot';
 import type { WidgetHandle } from '../widgets/types';
 
 export function LessonView({ id, onAsk, onProgress }: {
@@ -26,6 +27,7 @@ export function LessonView({ id, onAsk, onProgress }: {
     return api.onLessonEvent((e) => {
       if (e.id !== id) return;
       if (e.type === 'status') setStatus(e.text);
+      else if (e.type === 'partial') setRec((r) => (r && r.status === 'generating' ? { ...r, draft: e.lesson } : r));
       else load();
     });
   }, [id, load]);
@@ -61,13 +63,25 @@ export function LessonView({ id, onAsk, onProgress }: {
 
   if (rec.status !== 'ready' || !rec.lesson) {
     const failed = rec.status === 'error';
+    const d = rec.draft;
+    const drafted = d?.steps ?? [];
     return (
       <main className="panel">
-        <header className="bar"><div className="crumb"><b>{failed ? '沒有生成成功' : '正在準備這一課'}</b></div></header>
+        <header className="bar">
+          <div className="crumb">
+            {d?.crumbs?.map((c) => <Fragment key={c}>{c}<Icon.chevron /></Fragment>)}
+            <b>{failed ? '沒有生成成功' : '正在準備這一課'}</b>
+          </div>
+        </header>
         <div className="body">
           <div className="lesson">
-            <div className="lhead"><div className="t">{rec.question}</div></div>
-            {!failed && <div className="skel"><i /><i /><i style={{ width: '70%' }} /><i /><i style={{ width: '55%' }} /></div>}
+            <div className="lhead"><div className="t">{d?.title ?? rec.question}</div>{d?.title && <div className="q">你問：{rec.question}</div>}</div>
+            {!failed && (
+              <ol className="steps">
+                {drafted.map((st, i) => <li key={i} className="step draft"><span className="n">{i + 1}</span><p>{rich(st.text)}</p></li>)}
+                <li className="skel"><i /><i style={{ width: '70%' }} /></li>
+              </ol>
+            )}
           </div>
           <div className="stage">
             {failed ? (
@@ -75,10 +89,13 @@ export function LessonView({ id, onAsk, onProgress }: {
                 <p>{rec.error}</p>
                 <button className="btn" onClick={() => onAsk(rec.question)}><Icon.retry />再試一次</button>
               </div>
-            ) : <div className="stage-wait"><span className="dots"><i /><i /><i /></span></div>}
+            ) : <div className="stage-wait"><span className="dots"><i /><i /><i /></span><span>{status}</span></div>}
           </div>
         </div>
-        <Composer busy={!failed} status={status} onSubmit={(q) => onAsk(q)} placeholder="追問這一課，或問一個新問題…" />
+        <Composer
+          busy={!failed} status={status} onSubmit={(q) => onAsk(q)} placeholder="追問這一課，或問一個新問題…"
+          onStop={() => api.cancelLesson(id).catch((e) => setStatus(`停不下來：${e}`))}
+        />
       </main>
     );
   }
@@ -101,7 +118,7 @@ export function LessonView({ id, onAsk, onProgress }: {
           <div className="lhead"><div className="t">{L.title}</div><div className="q">你問：{rec.question}</div></div>
           <ol className="steps">
             {L.steps.map((s, i) => i <= step + 1 && (
-              <li key={i} className={`step ${i < step ? 'd' : i === step ? 'now' : 'later'}`} onClick={() => i !== step && go(i, i === step + 1)}>
+              <li key={i} ref={i === step ? (el) => el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) : undefined} className={`step ${i < step ? 'd' : i === step ? 'now' : 'later'}`} onClick={() => i !== step && go(i, i === step + 1)}>
                 <span className="n">{i + 1}</span><p>{rich(s.text)}</p>
               </li>
             ))}
@@ -128,6 +145,7 @@ function WidgetFor({ lesson, step, animate, widget }: {
 }) {
   const w = lesson.widget;
   if (w.kind === 'bubble-sort' && w.values?.length) return <BubbleSort ref={widget} values={w.values} steps={lesson.steps} step={step} animate={animate} />;
+  if (w.kind === 'plot' && w.plot) return <PlotWidget ref={widget} spec={w.plot} steps={lesson.steps} step={step} animate={animate} />;
   if (w.kind === 'html' && w.html) return <HtmlWidget ref={widget} html={w.html} step={step} animate={animate} />;
   return <div className="empty">這一課的元件格式不對，沒辦法顯示。</div>;
 }

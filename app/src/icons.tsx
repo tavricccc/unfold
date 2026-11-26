@@ -17,6 +17,7 @@ export const Icon = {
   chevron: () => <S w={2} size={12}><path d="m9 6 6 6-6 6" /></S>,
   left: () => <S w={1.8} size={14}><path d="m15 6-6 6 6 6" /></S>,
   send: () => <S w={2.2} size={15}><path d="M12 19V5M6 11l6-6 6 6" /></S>,
+  stop: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3" /></svg>,
   retry: () => <S w={1.9} size={14}><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></S>,
   check: () => <S w={2.6} size={14}><path d="m5 12 5 5 9-10" /></S>,
 };

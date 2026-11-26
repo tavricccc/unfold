@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../icons';
 
 /** The pill-shaped question box with the travelling glow. */
-export function Composer({ onSubmit, placeholder, busy, status, big, autoFocus, suggestions }: {
+export function Composer({ onSubmit, onStop, placeholder, busy, status, big, autoFocus, suggestions }: {
   onSubmit: (q: string) => void;
+  onStop?: () => void;
   placeholder: string;
   busy?: boolean;
   status?: string;
@@ -46,7 +47,9 @@ export function Composer({ onSubmit, placeholder, busy, status, big, autoFocus, 
             ref={ref} rows={1} value={text} autoFocus={autoFocus} placeholder={placeholder}
             onChange={(e) => setText(e.target.value)} onKeyDown={onKey} aria-label={placeholder}
           />
-          <button className="send" aria-label="送出" disabled={busy || !text.trim()} onClick={() => send()}><Icon.send /></button>
+          {busy && onStop
+            ? <button className="send stop" aria-label="停止生成" title="停止生成" onClick={onStop}><Icon.stop /></button>
+            : <button className="send" aria-label="送出" disabled={busy || !text.trim()} onClick={() => send()}><Icon.send /></button>}
         </div>
       </div>
     </div>

@@ -1,8 +1,10 @@
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -40,9 +42,49 @@ fn write_record(app: &AppHandle, id: &str, rec: &Value) -> Result<(), String> {
   fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
-/// Where the sidecar script lives. In development it is the source file next to src-tauri.
-fn sidecar_script() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("sidecar").join("agent.ts")
+/// Running generations: lesson id -> sidecar pid, plus the ids the learner stopped.
+#[derive(Default)]
+struct Jobs {
+  running: Mutex<HashMap<String, u32>>,
+  stopped: Mutex<HashSet<String>>,
+}
+
+/// The sidecar command. Development runs the TypeScript source with bun; a packaged build runs
+/// the compiled `unfold-agent` executable that Tauri installs next to the app.
+fn sidecar_command() -> Command {
+  if cfg!(debug_assertions) {
+    let mut c = Command::new("bun");
+    c.arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("sidecar").join("agent.ts"));
+    c
+  } else {
+    let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("unfold-agent.exe")));
+    Command::new(exe.unwrap_or_else(|| PathBuf::from("unfold-agent.exe")))
+  }
+}
+
+/// Finds the learner's own Claude Code so the Agent SDK drives it instead of a bundled copy.
+fn claude_path() -> Option<PathBuf> {
+  let finder = if cfg!(windows) { "where" } else { "which" };
+  if let Ok(out) = hidden(Command::new(finder).arg("claude")).output() {
+    if out.status.success() {
+      if let Some(line) = String::from_utf8_lossy(&out.stdout).lines().map(str::trim).find(|l| l.ends_with(".exe") || !cfg!(windows)) {
+        return Some(PathBuf::from(line));
+      }
+    }
+  }
+  let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
+  let p = PathBuf::from(home).join(".local").join("bin").join(if cfg!(windows) { "claude.exe" } else { "claude" });
+  p.exists().then_some(p)
+}
+
+fn kill_tree(pid: u32) {
+  #[cfg(windows)]
+  let r = hidden(&mut Command::new("taskkill")).args(["/T", "/F", "/PID", &pid.to_string()]).output();
+  #[cfg(not(windows))]
+  let r = Command::new("kill").args(["-TERM", &pid.to_string()]).output();
+  if let Err(e) = r {
+    log::error!("could not stop sidecar {pid}: {e}");
+  }
 }
 
 fn hidden(cmd: &mut Command) -> &mut Command {
@@ -103,8 +145,23 @@ fn delete_lesson(app: AppHandle, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn cancel_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String) -> Result<(), String> {
+  let pid = jobs.running.lock().map_err(|e| e.to_string())?.remove(&id);
+  let Some(pid) = pid else { return Err("這一課已經不在生成了".into()) };
+  jobs.stopped.lock().map_err(|e| e.to_string())?.insert(id.clone());
+  kill_tree(pid);
+  let mut r = read_record(&app, &id)?;
+  r["status"] = json!("error");
+  r["error"] = json!("你停止了這次生成");
+  write_record(&app, &id, &r)?;
+  let _ = app.emit("lesson-event", json!({ "id": id, "type": "error", "message": "你停止了這次生成" }));
+  Ok(())
+}
+
+#[tauri::command]
 fn claude_status() -> Result<String, String> {
-  let out = hidden(&mut Command::new("claude")).arg("--version").output().map_err(|e| format!("找不到 claude：{e}"))?;
+  let bin = claude_path().ok_or("找不到 claude")?;
+  let out = hidden(&mut Command::new(bin)).arg("--version").output().map_err(|e| format!("找不到 claude：{e}"))?;
   if !out.status.success() {
     return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
   }
@@ -141,7 +198,11 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
       let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "error", "message": msg }));
     };
 
-    let mut child = match hidden(Command::new("bun").arg(sidecar_script()))
+    let mut cmd = sidecar_command();
+    if let Some(p) = claude_path() {
+      cmd.env("UNFOLD_CLAUDE_PATH", p);
+    }
+    let mut child = match hidden(&mut cmd)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped())
@@ -150,6 +211,11 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
       Ok(c) => c,
       Err(e) => return fail(format!("無法啟動 sidecar：{e}")),
     };
+    let jobs = app2.state::<Jobs>();
+    if let Ok(mut m) = jobs.running.lock() {
+      m.insert(id2.clone(), child.id());
+    }
+    let was_stopped = || jobs.stopped.lock().map(|mut s| s.remove(&id2)).unwrap_or(false);
     if let Some(mut stdin) = child.stdin.take() {
       if let Err(e) = stdin.write_all(req.to_string().as_bytes()) {
         return fail(format!("無法傳送問題：{e}"));
@@ -170,12 +236,24 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
         }
       };
       match ev["type"].as_str() {
+        Some("partial") => {
+          if let Ok(mut r) = read_record(&app2, &id2) {
+            r["draft"] = ev["lesson"].clone();
+            if let Err(e) = write_record(&app2, &id2, &r) {
+              log::warn!("could not save draft: {e}");
+            }
+          }
+          let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "partial", "lesson": ev["lesson"] }));
+        }
         Some("lesson") => {
           got_result = true;
           match read_record(&app2, &id2) {
             Ok(mut r) => {
               r["status"] = json!("ready");
               r["lesson"] = ev["lesson"].clone();
+              if let Some(o) = r.as_object_mut() {
+                o.remove("draft");
+              }
               r["model"] = ev["model"].clone();
               if let Err(e) = write_record(&app2, &id2, &r) {
                 return fail(format!("無法儲存課程：{e}"));
@@ -197,6 +275,12 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
       }
     }
     let status = child.wait();
+    if let Ok(mut m) = jobs.running.lock() {
+      m.remove(&id2);
+    }
+    if was_stopped() {
+      return;
+    }
     if !got_result {
       let mut err = String::new();
       if let Some(mut s) = child.stderr.take() {
@@ -211,6 +295,7 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .manage(Jobs::default())
     .plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())
     .setup(|app| {
       // A lesson left "generating" by a previous run can never finish; mark it so the UI can offer a retry.
@@ -233,7 +318,7 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![list_lessons, get_lesson, set_progress, delete_lesson, claude_status, start_lesson])
+    .invoke_handler(tauri::generate_handler![list_lessons, get_lesson, set_progress, delete_lesson, claude_status, start_lesson, cancel_lesson])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
 }
