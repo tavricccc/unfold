@@ -1,0 +1,1 @@
+{"spec":{"columns":[{"id":"pres","title":"總統制","icon":"user"},{"id":"parl","title":"內閣制","icon":"users"}],"rows":[{"id":"r1","label":"行政首長","cells":["總統","**總理**（首相）"]},{"id":"r2","label":"產生方式","cells":["人民直選","國會多數黨領袖"]},{"id":"r3","label":"權力關係","cells":["行政與立法分立","行政對立法負責"]},{"id":"r4","label":"代表國家","cells":["美國","英國、日本"]}]},"steps":[{"focus":["r3"]}]}

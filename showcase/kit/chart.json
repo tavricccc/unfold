@@ -1,0 +1,2 @@
+{"spec":{"type":"bar","title":"台灣各產業 GDP 占比（%）","unit":"%","labels":["1952","1970","1990","2020"],"series":[{"id":"agri","name":"農業","values":[32,15,4,1.6]},{"id":"ind","name":"工業","values":[20,37,38,36]},{"id":"svc","name":"服務業","values":[48,48,58,62]}],"marks":[{"id":"m1","label":"1970","series":"ind","text":"加工出口區帶動**工業**"}]},
+"steps":[{},{"reveal":["1970"],"focus":["ind"]},{"reveal":["m1"],"focus":["m1","ind"]}]}

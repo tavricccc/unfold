@@ -1,0 +1,1 @@
+{"spec":{"center":"工業革命為什麼先在英國發生？","items":[{"id":"p1","icon":"pickaxe","title":"煤鐵豐富","text":"蒸汽機的燃料與材料就在身邊"},{"id":"p2","icon":"coins","title":"資本充足","text":"海外貿易累積大量財富"},{"id":"p3","icon":"users","title":"勞力充沛","text":"圈地運動讓農民湧入城市"},{"id":"p4","icon":"ship","title":"廣大市場","text":"殖民地提供原料也購買商品"}]},"steps":[{"reveal":["p1"]},{"reveal":["p2"],"focus":["p2"]}]}

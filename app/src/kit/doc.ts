@@ -3,7 +3,7 @@ import { ICONS } from './icons';
 import runtime from './runtime.js?raw';
 
 /** JSON that is safe inside a <script> element. */
-const js = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/ /g, '\\u2028').replace(/ /g, '\\u2029');
+const js = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 /** The kit, loaded ahead of every visual: its icons and the `U` runtime. */
 export const KIT_HEAD = `<script>window.__UNFOLD_ICONS=${js(ICONS)}</script><script>${runtime}</script>`;

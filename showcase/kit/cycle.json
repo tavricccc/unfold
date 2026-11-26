@@ -1,0 +1,1 @@
+{"spec":{"layout":"cycle","nodes":[{"id":"ev","label":"蒸發","icon":"sun"},{"id":"co","label":"凝結","icon":"cloud"},{"id":"pr","label":"降水","icon":"cloud-rain"},{"id":"ru","label":"逕流","icon":"waves"}],"edges":[{"from":"ev","to":"co"},{"from":"co","to":"pr"},{"from":"pr","to":"ru"},{"from":"ru","to":"ev"}]},"steps":[{"focus":["pr"]}]}
