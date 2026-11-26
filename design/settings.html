@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="light" data-accent="green">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unfold · 設定</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="unfold.css">
+<style>
+.st-w { display: grid; grid-template-columns: 210px minmax(0,1fr); min-height: 0; }
+.sn { padding: 18px 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.sn a { padding: 8px 12px; border-radius: var(--r-md); color: var(--fg-2); font-size: 13.5px; cursor: pointer; transition: background-color .15s; }
+.sn a:hover { background: var(--sub); }
+.sn a.on { background: var(--sub); color: var(--fg); font-weight: 500; }
+.sc { overflow: auto; padding: 26px 40px 40px; }
+.col { max-width: 720px; }
+.sec + .sec { margin-top: 34px; }
+.sec h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.row { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.row .k { font-size: 13.5px; color: var(--fg); }
+.row .k small { display: block; font-size: 12px; color: var(--fg-3); margin-top: 2px; }
+.row .v { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; }
+.tc { display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
+.tc .pv { height: 86px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line); display: grid; grid-template-columns: 30% 1fr; gap: 5px; padding: 7px; overflow: hidden; transition: box-shadow .15s; }
+.tc .pv i { border-radius: 6px; }
+.tc .pv b { border-radius: 8px; display: flex; flex-direction: column; gap: 5px; padding: 7px; }
+.tc .pv b em { height: 5px; border-radius: 3px; }
+.tc .pv b em.a { margin-top: auto; height: 12px; border-radius: 999px; }
+.tc span { font-size: 13px; color: var(--fg-2); display: flex; align-items: center; gap: 7px; }
+.tc span::before { content: ""; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.tc.on .pv { box-shadow: 0 0 0 2px var(--fg); }
+.tc.on span { color: var(--fg); font-weight: 500; }
+.tc.on span::before { box-shadow: inset 0 0 0 4.5px var(--fg); }
+.pv.l { background: #f3f3f2; } .pv.l i { background: #e8e8e6; } .pv.l b { background: #fff; } .pv.l b em { background: #e4e4e2; } .pv.l b em.a { background: #fff; box-shadow: 0 0 0 1px #d9d9d6; }
+.pv.d { background: #0b0b0b; } .pv.d i { background: #161616; } .pv.d b { background: #141414; } .pv.d b em { background: #2a2a2a; } .pv.d b em.a { background: #1b1b1b; box-shadow: 0 0 0 1px #333; }
+.pv.s { background: linear-gradient(105deg, #f3f3f2 50%, #0b0b0b 50%); }
+.pv.s i { background: #e8e8e6; } .pv.s b { background: linear-gradient(105deg, #fff 42%, #141414 42%); } .pv.s b em { background: #8a8a8a; opacity: .45; } .pv.s b em.a { background: transparent; box-shadow: 0 0 0 1px #8a8a8a; }
+.sws { display: flex; gap: 10px; }
+.swc { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-3); cursor: pointer; }
+.swc i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; transition: box-shadow .15s; }
+.swc.on i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fg); }
+.swc.on { color: var(--fg); font-weight: 500; }
+.tog { width: 38px; height: 22px; border-radius: 999px; background: var(--line-2); position: relative; flex: none; }
+.tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.tog.on { background: var(--acc); }
+.tog.on::after { transform: translateX(16px); }
+.sel { display: inline-flex; align-items: center; gap: 10px; justify-content: space-between; min-width: 220px; border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 8px 12px; background: var(--raise); font-size: 13.5px; }
+.sel .m { display: inline-flex; align-items: center; gap: 8px; }
+.conn { display: flex; align-items: center; gap: 12px; width: 100%; background: var(--sub); border-radius: var(--r-lg); padding: 12px 14px; }
+.conn .ok { width: 30px; height: 30px; border-radius: 50%; background: var(--acc-soft); color: var(--acc-ink); display: grid; place-items: center; flex: none; }
+.conn .t { font-size: 13.5px; font-weight: 500; }
+.conn .d { font-size: 12px; color: var(--fg-3); margin-top: 1px; font-family: var(--mono); }
+.conn .sp { flex: 1; }
+.path { font-family: var(--mono); font-size: 12.5px; color: var(--fg-2); background: var(--sub); border-radius: var(--r-sm); padding: 6px 10px; }
+.mini { padding: 6px 12px; font-size: 12.5px; }
+.glow-demo { width: 220px; }
+.glow-demo .box { min-height: 38px; padding: 4px 4px 4px 14px; font-size: 12.5px; }
+.glow-demo .send { width: 28px; height: 28px; }
+</style>
+</head>
+<body data-active="settings">
+<div class="app">
+  <aside class="side"></aside>
+  <main class="panel plain">
+    <header class="bar"><div class="crumb"><b>設定</b></div><span class="sp"></span></header>
+    <section class="st-w">
+      <nav class="sn"><a class="on">外觀</a><a>Claude Code</a><a>課程</a><a>資料</a><a>快捷鍵</a></nav>
+      <div class="sc"><div class="col">
+        <div class="sec">
+          <h2>外觀</h2>
+          <div class="row" style="grid-template-columns:200px 1fr;align-items:start">
+            <div class="k">主題</div>
+            <div class="themes">
+              <div class="tc on"><div class="pv l"><i></i><b><em style="width:60%"></em><em style="width:40%"></em><em class="a"></em></b></div><span>淺色</span></div>
+              <div class="tc"><div class="pv d"><i></i><b><em style="width:60%"></em><em style="width:40%"></em><em class="a"></em></b></div><span>深色</span></div>
+              <div class="tc"><div class="pv s"><i></i><b><em style="width:60%"></em><em style="width:40%"></em><em class="a"></em></b></div><span>跟隨系統</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="k">強調色</div>
+            <div class="v"><div class="sws">
+              <span class="swc on"><i style="background:#0f8a5f"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="m5 12 5 5 9-10"/></svg></i>綠</span>
+              <span class="swc"><i style="background:#e5591a"></i>橘</span>
+              <span class="swc"><i style="background:#d93a3a"></i>珊瑚</span>
+              <span class="swc"><i style="background:#161616;box-shadow:inset 0 0 0 1px #444"></i>黑白</span>
+            </div></div>
+          </div>
+          <div class="row">
+            <div class="k">字級</div>
+            <div class="v"><div class="seg"><span>小</span><span class="on">標準</span><span>大</span></div></div>
+          </div>
+          <div class="row">
+            <div class="k">輸入框光暈<small>生成時繞著輸入框轉</small></div>
+            <div class="v"><div class="glow live glow-demo"><div class="box"><span class="ph">正在想…</span><button class="send stop" aria-label="停止"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3"/></svg></button></div></div><span class="tog on"></span></div>
+          </div>
+          <div class="row">
+            <div class="k">減少動態<small>關掉動畫，直接跳到每一步的結果</small></div>
+            <div class="v"><span class="tog"></span></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>Claude Code</h2>
+          <div class="row" style="grid-template-columns:1fr">
+            <div class="conn"><span class="ok"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="m5 12 5 5 9-10"/></svg></span><div><div class="t">已連線</div><div class="d">claude 2.4.1 · Agent SDK · ~/.claude</div></div><span class="sp"></span><button class="btn mini">重新檢查</button></div>
+          </div>
+          <div class="row">
+            <div class="k">出課模型<small>寫課程腳本和元件</small></div>
+            <div class="v"><span class="sel"><span class="m"><i style="width:7px;height:7px;border-radius:50%;background:var(--acc)"></i>Sonnet 4.6</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7 10 5 5 5-5"/></svg></span></div>
+          </div>
+          <div class="row">
+            <div class="k">追問模型<small>回答課程裡的小問題</small></div>
+            <div class="v"><span class="sel"><span class="m"><i style="width:7px;height:7px;border-radius:50%;background:var(--fg-3)"></i>Haiku 4.5</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7 10 5 5 5-5"/></svg></span></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>課程</h2>
+          <div class="row">
+            <div class="k">講解語言</div>
+            <div class="v"><span class="sel"><span class="m">繁體中文</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7 10 5 5 5-5"/></svg></span></div>
+          </div>
+          <div class="row">
+            <div class="k">每堂課的長度</div>
+            <div class="v"><div class="seg"><span>精簡</span><span class="on">標準</span><span>詳細</span></div></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h2>資料</h2>
+          <div class="row">
+            <div class="k">存放位置</div>
+            <div class="v"><span class="path">~/Unfold/lessons</span><button class="btn mini">打開資料夾</button></div>
+          </div>
+          <div class="row">
+            <div class="k">匯出<small>每堂課一個資料夾，含腳本與截圖</small></div>
+            <div class="v"><button class="btn mini">匯出全部課程</button></div>
+          </div>
+        </div>
+      </div></div>
+    </section>
+  </main>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>
