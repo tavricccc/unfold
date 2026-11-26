@@ -48,7 +48,12 @@
     handlers.forEach((h) => safe(h, index, animate));
   };
   addEventListener('message', (e) => { const d = e.data; if (d && d.type === 'step') go(d.index | 0, !!d.animate); });
-  addEventListener('DOMContentLoaded', () => { if (U.step < 0) go(0, false); });
+  addEventListener('DOMContentLoaded', () => {
+    // a lone capped svg sits in the middle of the stage rather than at its top
+    const kids = [...document.body.children].filter((n) => !/^(SCRIPT|STYLE)$/.test(n.tagName));
+    if (kids.length === 1 && kids[0].classList.contains('u-svg')) Object.assign(document.body.style, { display: 'flex', flexDirection: 'column', justifyContent: 'center' });
+    if (U.step < 0) go(0, false);
+  });
 
   // ---------- drawing ----------
   U.el = (parent, tag, attrs, text) => {
@@ -64,11 +69,15 @@
     s.setAttribute('viewBox', `0 0 ${w} ${h}`);
     s.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     s.setAttribute('class', 'u-svg');
+    // a small canvas on a large stage would scale its 14px labels to 30px and more
+    s.style.maxWidth = `${w * 1.6}px`;
+    s.style.maxHeight = `${h * 1.6}px`;
+    s.style.margin = '0 auto';
     (parent || document.body).appendChild(s);
     return s;
   };
   U.text = (parent, x, y, str, o = {}) => U.el(parent, 'text', {
-    x, y, 'text-anchor': o.anchor || 'middle', 'dominant-baseline': o.baseline || 'middle',
+    x, y, 'text-anchor': o.anchor || 'start', 'dominant-baseline': o.baseline || 'middle',
     'font-size': o.size || 14, 'font-weight': o.weight || null, fill: o.color || 'var(--fg)', class: o.class || null,
   }, str);
   U.icon = (parent, name, x, y, size = 24, o = {}) => {
@@ -292,7 +301,7 @@
         }
         const bw = (R - L) / Math.max(1, labels.length);
         const cxAt = (i) => L + bw * (i + 0.5);
-        labels.forEach((lab, i) => { const t = U.text(s, cxAt(i), B + 16, lab, { class: 'u-lab' }); put(reg, lab, t); t.dataset.dim = 'no'; });
+        labels.forEach((lab, i) => { const t = U.text(s, cxAt(i), B + 16, lab, { anchor: 'middle', class: 'u-lab' }); put(reg, lab, t); t.dataset.dim = 'no'; });
         const anchors = {};
         if (type === 'line') {
           series.forEach((se, k) => {
@@ -302,7 +311,7 @@
             pts.forEach((p, i) => {
               const d = U.el(s, 'g', {});
               U.el(d, 'circle', { cx: p[0], cy: p[1], r: 4.5, fill: 'var(--bg)', stroke: palette(k), 'stroke-width': 2 });
-              if (series.length === 1) U.text(d, p[0], p[1] - 14, fmt(se.values[i]), { class: 'u-val' });
+              if (series.length === 1) U.text(d, p[0], p[1] - 14, fmt(se.values[i]), { anchor: 'middle', class: 'u-val' });
               put(reg, labels[i], d);
               (anchors[labels[i]] = anchors[labels[i]] || {})[se.id] = p;
             });
@@ -318,7 +327,7 @@
               const top = Math.min(y(v0), y(v1)), ht = Math.abs(y(v1) - y(v0));
               const g = U.el(s, 'g', { class: 'u-bar' });
               U.el(g, 'rect', { x: x + 1, y: top, width: Math.max(1, w - 2), height: Math.max(0.5, ht), rx: Math.min(4, w / 4), fill: palette(k) });
-              if (!stacked && n === 1) U.text(g, x + w / 2, top - 10, fmt(v), { class: 'u-val' });
+              if (!stacked && n === 1) U.text(g, x + w / 2, top - 10, fmt(v), { anchor: 'middle', class: 'u-val' });
               if (stacked) base[i] = v1;
               put(reg, labels[i], g); put(reg, se.id, g);
               (anchors[labels[i]] = anchors[labels[i]] || {})[se.id] = [x + w / 2, top];
@@ -404,7 +413,7 @@
         pairs[key] = (pairs[key] || 0) + 1;
         const g = U.arrow(svg, x1, y1, x2, y2, { bend, dashed: e.dashed, both: e.both, class: 'u-edge' });
         if (e.label) {
-          const t = U.text(g, g.mid.x, g.mid.y, e.label, { class: 'u-elabel' });
+          const t = U.text(g, g.mid.x, g.mid.y, e.label, { anchor: 'middle', class: 'u-elabel' });
           const bb = t.getBBox();
           const bg = U.el(g, 'rect', { x: bb.x - 5, y: bb.y - 2, width: bb.width + 10, height: bb.height + 4, rx: 5, fill: 'var(--bg)' });
           g.insertBefore(bg, t);
