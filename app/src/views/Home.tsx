@@ -1,12 +1,13 @@
 import { Composer } from '../components/Composer';
 import { subjectIcon } from '../icons';
 import type { LessonMeta } from '../lesson';
-import { EFFORT_LABEL, MODEL_LABEL, type Gen } from '../settings';
+import { GenPicker } from '../components/GenPicker';
+import type { Settings } from '../settings';
 
 const TRY = ['泡泡排序是怎麼運作的？', '用動畫證明畢氏定理', '導數到底在算什麼', '為什麼斜著丟會畫出拋物線'];
 
-export function Home({ lessons, gen, onAsk, open }: {
-  lessons: LessonMeta[]; gen: Gen; onAsk: (q: string) => void; open: (id: string) => void;
+export function Home({ lessons, settings, update, onAsk, open }: {
+  lessons: LessonMeta[]; settings: Settings; update: (p: Partial<Settings>) => void; onAsk: (q: string) => void; open: (id: string) => void;
 }) {
   const going = lessons.filter((l) => l.status === 'ready' && l.total && l.step < l.total - 1).slice(0, 3);
   return (
@@ -28,7 +29,7 @@ export function Home({ lessons, gen, onAsk, open }: {
           <p className="lead">問一個問題，它會一步一步展開成一堂可以動手玩的課。</p>
           <Composer
             big autoFocus onSubmit={onAsk} placeholder="一個問題、一個好奇、一個卡住的地方…"
-            foot={<><span className="chip"><i />{MODEL_LABEL[gen.model]}{gen.effort && ` · ${EFFORT_LABEL[gen.effort]}`}</span><span>Enter 送出 · Shift + Enter 換行</span></>}
+            foot={<><GenPicker settings={settings} update={update} /><span>Enter 送出 · Shift + Enter 換行</span></>}
           />
           <div className="try"><span className="lbl">試試</span>{TRY.map((t) => <button key={t} className="sg" onClick={() => onAsk(t)}>{t}</button>)}</div>
           {going.length > 0 && (

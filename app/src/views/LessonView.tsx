@@ -333,7 +333,7 @@ function Ticks({ chs, step, go }: { chs: Chapter[]; step: number; go: (n: number
 function GenFoot({ gen, cost }: { gen: Gen; cost?: Cost }) {
   return (
     <>
-      <span className="chip"><i />{MODEL_LABEL[gen.model]}{gen.effort && ` · ${EFFORT_LABEL[gen.effort]}`}</span>
+      <span className="chip"><i />{MODEL_LABEL[gen.model]}{` · ${EFFORT_LABEL[gen.effort]}`}</span>
       {cost && <CostTag cost={cost} />}
     </>
   );
