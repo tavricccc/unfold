@@ -17,6 +17,7 @@ import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod';
 import { chaptersOf, type Chapter } from '../src/chapters.ts';
 import type { Cost, Draft, Lesson, LessonRecord, Part, Widget } from '../src/lesson.ts';
+import { problems } from './check.ts';
 import { parsePartial } from './partial.ts';
 import { RESPONSE_SCHEMA, SYSTEM_PROMPT } from './prompt.ts';
 
@@ -74,19 +75,24 @@ function streamingText(json: string): string | undefined {
   try { return JSON.parse(`"${m[1].replace(/\\+$/, (b) => (b.length % 2 ? b.slice(1) : b))}"`); } catch { return undefined; }
 }
 
-function checkWidget(w: Widget | undefined): Widget {
-  if (!w) throw new Error('missing widget');
-  if (w.kind === 'bubble-sort' && w.values?.length) return w;
-  if (w.kind === 'plot' && w.plot) return w;
-  if (w.kind === 'html' && w.html) return w;
-  throw new Error(`widget ${w.kind} has no content`);
+/** A written answer with problems Claude can repair. */
+class Fixable extends Error {
+  constructor(readonly issues: string[]) { super(`the answer has problems: ${issues.join('; ')}`); }
+}
+
+function checkWidget(w: Widget | undefined, steps: Lesson['steps']): Widget {
+  if (!w) throw new Fixable(['the chapter has no widget']);
+  const bad = problems(w, steps);
+  if (bad.length) throw new Fixable(bad);
+  return w;
 }
 
 /** Turns a first answer into the lesson. */
 function toLesson(a: Answer): Lesson {
   if (a.mode !== 'chapter') throw new Error(`a new lesson must start with a chapter, got ${a.mode}`);
-  if (!a.title || !a.steps?.length || !a.task || !a.subject || !a.crumbs?.length) throw new Error('chapter is missing fields');
-  return { title: a.title, subject: a.subject, crumbs: a.crumbs, steps: a.steps, task: a.task, suggestions: a.suggestions, widget: checkWidget(a.widget) };
+  const lacks = (['title', 'steps', 'task', 'subject', 'crumbs'] as const).filter((k) => !a[k] || (Array.isArray(a[k]) && !(a[k] as unknown[]).length));
+  if (lacks.length) throw new Fixable([`a chapter needs ${lacks.join(', ')}`]);
+  return { title: a.title!, subject: a.subject!, crumbs: a.crumbs!, steps: a.steps!, task: a.task!, suggestions: a.suggestions, widget: checkWidget(a.widget, a.steps!) };
 }
 
 /** Turns a follow-up answer into a part, with any html edits applied to the chapter's current visual. */
@@ -94,23 +100,28 @@ function toPart(a: Answer, q: string, chs: Chapter[], at: number): Part {
   const base = { question: q, mode: a.mode, suggestions: a.suggestions };
   if (a.mode === 'chapter') return { ...base, lesson: toLesson(a) };
   if (a.mode === 'text') {
-    if (!a.text?.trim()) throw new Error('text reply is empty');
+    if (!a.text?.trim()) throw new Fixable(['the text reply is empty']);
     return { ...base, at, text: a.text };
   }
-  if (!a.steps?.length) throw new Error('extend has no steps');
+  if (!a.steps?.length) throw new Fixable(['extend needs steps']);
   const ch = chs[at];
+  const all = [...ch.steps, ...a.steps];
   let widget: Widget | undefined;
-  if (a.widget) widget = checkWidget(a.widget);
+  if (a.widget) widget = checkWidget(a.widget, all);
   else if (a.edits?.length) {
     const cur = ch.versions[ch.versions.length - 1];
-    if (cur.kind !== 'html' || !cur.html) throw new Error('edits need an html visual');
+    if (cur.kind !== 'html' || !cur.html) throw new Fixable(['edits only apply to an html visual; send a whole widget instead']);
     let html = cur.html;
     for (const e of a.edits) {
       const k = html.indexOf(e.find);
-      if (k < 0) throw new Error(`edit did not match the visual: ${e.find.slice(0, 60)}`);
+      if (k < 0) throw new Fixable([`an edit's "find" text does not occur in the current html (call read_chapter to see it): ${e.find.slice(0, 80)}`]);
       html = html.slice(0, k) + e.replace + html.slice(k + e.find.length);
     }
-    widget = { kind: 'html', html };
+    widget = checkWidget({ kind: 'html', html }, all);
+  } else {
+    // new steps on the same visual must still point at things it has
+    const bad = problems(ch.versions[ch.versions.length - 1], all);
+    if (bad.length) throw new Fixable(bad);
   }
   return { ...base, at, steps: a.steps, ...(widget ? { widget, ...(a.task ? { task: a.task } : {}) } : {}) };
 }
@@ -143,6 +154,7 @@ async function main() {
     )],
   });
 
+  let sid: string | undefined;
   let phase = '';
   const setPhase = (p: string) => { if (p !== phase) { phase = p; emit({ type: 'status', text: p }); } };
 
@@ -171,7 +183,7 @@ async function main() {
     for await (const m of q as AsyncIterable<any>) {
       if (m.type === 'system' && m.subtype === 'init') {
         if (m.model) model = m.model;
-        if (m.session_id) emit({ type: 'session', id: m.session_id });
+        if (m.session_id) { sid = m.session_id; emit({ type: 'session', id: m.session_id }); }
       }
       if (m.type === 'stream_event') {
         const ev = m.event;
@@ -214,9 +226,27 @@ async function main() {
     throw new Error('generation ended without a result');
   };
 
+  /**
+   * Converts an answer; when it has problems Claude can fix, asks once in the same session for a
+   * corrected answer. The costs of both runs are added up.
+   */
+  const settle = async <T,>(first: { answer: Answer; cost: Cost }, convert: (a: Answer) => T): Promise<{ value: T; cost: Cost }> => {
+    try {
+      return { value: convert(first.answer), cost: first.cost };
+    } catch (e) {
+      if (!(e instanceof Fixable) || !sid) throw e;
+      console.error(`repairing: ${e.message}`);
+      setPhase('正在檢查並修正…');
+      const fix = await run(`你剛才的回答有這些問題，學生還沒看到它：\n- ${e.issues.join('\n- ')}\n請修正後重新輸出完整的回答（同樣的 mode，內容不變，只修正問題）。`, sid, { any: false });
+      const c = fix.cost, p = first.cost;
+      return { value: convert(fix.answer), cost: { usd: p.usd + c.usd, input: p.input + c.input, output: p.output + c.output, cacheRead: p.cacheRead + c.cacheRead, cacheWrite: p.cacheWrite + c.cacheWrite } };
+    }
+  };
+
   if (!rec) {
-    const { answer, cost } = await run(`新的一課。學生問：${req.question}`, undefined, { any: false });
-    emit({ type: 'lesson', lesson: toLesson(answer), model, cost });
+    const first = await run(`新的一課。學生問：${req.question}`, undefined, { any: false });
+    const { value, cost } = await settle(first, toLesson);
+    emit({ type: 'lesson', lesson: value, model, cost });
     return;
   }
 
@@ -236,7 +266,8 @@ async function main() {
     }
   }
   result ??= await run(fresh, undefined, { any: false });
-  emit({ type: 'part', part: toPart(result.answer, req.question, chs, at), model, cost: result.cost });
+  const { value, cost } = await settle(result, (a) => toPart(a, req.question, chs, at));
+  emit({ type: 'part', part: value, model, cost });
 }
 
 main().catch((e) => {
