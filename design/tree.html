@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="light" data-accent="green">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unfold · 知識樹</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="unfold.css">
+<style>
+.tw { display: grid; grid-template-columns: minmax(0,1fr) 320px; min-height: 0; }
+.cv { position: relative; margin: 16px 0 16px 16px; border-radius: var(--r-lg); background: var(--sub); overflow: hidden; }
+.cv svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.br { fill: none; stroke: var(--fg-3); stroke-linecap: round; opacity: .55; }
+.br.sel { stroke: var(--fg); opacity: 1; }
+.tw2 { fill: none; stroke: var(--fg-3); stroke-width: 1.4; opacity: .55; }
+.tw2.sel { stroke: var(--fg-2); opacity: 1; }
+.trunk { fill: var(--fg-3); opacity: .55; }
+.lf { stroke-width: 2.4; }
+.lf.done { fill: var(--acc); stroke: var(--acc); }
+.lf.prog { fill: var(--bg); stroke: var(--acc); }
+.lf.next { fill: var(--bg); stroke: var(--fg-3); stroke-dasharray: 3 3.5; stroke-width: 1.6; }
+.arc { fill: var(--acc); }
+.lt { font-family: var(--sans); font-size: 13px; fill: var(--fg-2); paint-order: stroke; stroke: var(--sub); stroke-width: 4px; stroke-linejoin: round; }
+.lt.next { fill: var(--fg-3); }
+.bt { font-family: var(--sans); font-size: 15px; font-weight: 600; fill: var(--fg); paint-order: stroke; stroke: var(--sub); stroke-width: 5px; }
+.bt small { font-weight: 400; }
+.bc { font-size: 12px; font-weight: 400; fill: var(--fg-3); }
+.sel-ring { fill: none; stroke: var(--acc); stroke-width: 1.5; opacity: .5; }
+.legend { position: absolute; left: 16px; bottom: 14px; display: flex; gap: 16px; font-size: 12px; color: var(--fg-2); background: var(--raise); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; }
+.zoom { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; background: var(--raise); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.zoom span { width: 32px; height: 30px; display: grid; place-items: center; color: var(--fg-2); }
+.zoom span + span { border-top: 1px solid var(--line); }
+.dp { padding: 20px 18px 18px 20px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.dp .hd { display: flex; align-items: center; gap: 10px; }
+.dp .ic { width: 36px; height: 36px; border-radius: 11px; background: var(--sub); display: grid; place-items: center; color: var(--fg); }
+.dp h2 { font-size: 18px; font-weight: 600; }
+.dp .sm { font-size: 12.5px; color: var(--fg-3); margin-top: 1px; }
+.dp h3 { font-size: 12.5px; font-weight: 500; color: var(--fg-3); margin-top: 6px; }
+.ls { display: flex; flex-direction: column; }
+.li { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; padding: 9px 8px; border-radius: var(--r-md); color: var(--fg-2); font-size: 13.5px; transition: background-color .15s; cursor: pointer; }
+.li:hover { background: var(--sub); }
+.li b { color: var(--fg); font-weight: 500; }
+.li .w { font-size: 12px; color: var(--fg-3); font-variant-numeric: tabular-nums; }
+.dot { width: 12px; height: 12px; border-radius: 50%; margin: 0 3px; }
+.dot.done { background: var(--acc); }
+.dot.prog { box-shadow: inset 0 0 0 2px var(--acc); background: conic-gradient(var(--acc) 0 83%, transparent 0); }
+.dot.next { box-shadow: inset 0 0 0 1.5px var(--fg-3); }
+.nx { margin-top: auto; background: var(--sub); border-radius: var(--r-lg); padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+.nx .k { font-size: 12px; color: var(--fg-3); }
+.nx .t { font-size: 15px; font-weight: 600; }
+.nx p { font-size: 13px; color: var(--fg-2); line-height: 1.55; }
+.nx .primary { align-self: flex-start; margin-top: 6px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.stats div { padding: 10px 12px; font-size: 12px; color: var(--fg-3); }
+.stats div + div { border-left: 1px solid var(--line); }
+.stats b { display: block; font-size: 17px; color: var(--fg); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body data-active="tree">
+<div class="app">
+  <aside class="side"></aside>
+  <main class="panel plain">
+    <header class="bar"><div class="crumb"><b>知識樹</b></div><span class="sp"></span><div class="seg"><span class="on">全部</span><span>這個月</span></div></header>
+    <section class="tw">
+      <div class="cv">
+        <svg id="tree" viewBox="-30 50 900 710" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="legend"><span><i style="background:var(--acc)"></i>學完</span><span><i style="box-shadow:inset 0 0 0 2px var(--acc)"></i>學到一半</span><span><i style="box-shadow:inset 0 0 0 1.5px var(--fg-3)"></i>建議下一課</span></div>
+        <div class="zoom"><span>+</span><span>−</span></div>
+      </div>
+      <aside class="dp">
+        <div class="hd"><span class="ic" id="ic"></span><div><h2>演算法</h2><div class="sm">從 11 月 3 日開始</div></div></div>
+        <div class="stats"><div>課<b>2</b></div><div>學完<b>1</b></div><div>步驟<b>12</b></div></div>
+        <h3>你上過的</h3>
+        <div class="ls">
+          <div class="li"><i class="dot done"></i><b>泡泡排序是怎麼運作的？</b><span class="w">7 / 7</span></div>
+          <div class="li"><i class="dot prog"></i><b>二分搜尋</b><span class="w">5 / 6</span></div>
+        </div>
+        <h3>可以接著長的</h3>
+        <div class="ls">
+          <div class="li"><i class="dot next"></i><span>插入排序</span><span class="w"></span></div>
+          <div class="li"><i class="dot next"></i><span>合併排序</span><span class="w"></span></div>
+        </div>
+        <div class="nx"><span class="k">接著學</span><span class="t">插入排序</span><p>你在泡泡排序問過「插入排序會比較少次嗎」。同一組 4 3 2 1，比一比兩種各要幾步。</p><button class="primary">開始這一課 <kbd>↵</kbd></button></div>
+      </aside>
+    </section>
+  </main>
+</div>
+<script src="shell.js"></script>
+<script>
+document.getElementById('ic').innerHTML = window.UNFOLD_ICONS.algo;
+// Organic tree. Each branch is a cubic from the trunk top; leaves sit on short twigs along it.
+const T = [420, 470];
+const B = [
+  { name: '演算法', n: '2 堂', sel: true, c: [T, [360, 420], [230, 400], [104, 330]],
+    leaves: [[.3, -1, '泡泡排序', 'done'], [.52, 1, '二分搜尋', 'prog', .83], [.72, -1, '插入排序', 'next'], [.9, 1, '合併排序', 'next']] },
+  { name: '數學', n: '2 堂', c: [T, [400, 360], [330, 220], [250, 92]],
+    leaves: [[.4, -1, '圓周率從哪來', 'done'], [.65, 1, '畢氏定理', 'prog', .66], [.88, -1, '三角函數', 'next']] },
+  { name: '物理', n: '1 堂', c: [T, [450, 340], [520, 200], [560, 76]],
+    leaves: [[.45, 1, '斜拋', 'prog', .57], [.85, -1, '空氣阻力', 'next']] },
+  { name: '語言', n: '1 堂', c: [T, [490, 410], [640, 360], [756, 276]],
+    leaves: [[.45, -1, '羅馬尼亞語單字', 'prog', .33], [.85, 1, '問路與點餐', 'next']] },
+  { name: '藝術', n: '1 堂', c: [[422, 566], [540, 550], [660, 546], [762, 500]],
+    leaves: [[.45, 1, '莫內怎麼畫光', 'prog', .6], [.82, -1, '梵谷的筆觸', 'next']] },
+];
+const bez = (c, t) => { const u = 1 - t; return [0, 1].map(i => u*u*u*c[0][i] + 3*u*u*t*c[1][i] + 3*u*t*t*c[2][i] + t*t*t*c[3][i]); };
+const tan = (c, t) => { const u = 1 - t; return [0, 1].map(i => 3*u*u*(c[1][i]-c[0][i]) + 6*u*t*(c[2][i]-c[1][i]) + 3*t*t*(c[3][i]-c[2][i])); };
+const P = p => p.map(v => v.toFixed(1)).join(' ');
+let g = '';
+g += `<path class="trunk" d="M398 742C410 660 416 560 413 470Q420 463 427 470C426 560 432 660 446 742Z"/>`;
+g += `<path class="br" stroke-width="2.2" d="M404 738C380 730 356 732 330 744M440 736C466 728 494 730 520 744"/>`;
+for (const b of B) {
+  const sw = b.sel ? 4.2 : 3.6;
+  g += `<path class="br${b.sel ? ' sel' : ''}" stroke-width="${sw}" d="M${P(b.c[0])}C${P(b.c[1])} ${P(b.c[2])} ${P(b.c[3])}"/>`;
+}
+for (const b of B) {
+  for (const [t, side, label, st, f] of b.leaves) {
+    const p = bez(b.c, t), d = tan(b.c, t), L = Math.hypot(...d), ux = d[0] / L, uy = d[1] / L;
+    const nx = -uy * side, ny = ux * side, len = 24, q = [p[0] + nx * len + ux * 8, p[1] + ny * len + uy * 8];
+    g += `<path class="tw2${b.sel ? ' sel' : ''}" d="M${P(p)}Q${P([p[0] + nx * 8 + ux * 10, p[1] + ny * 8 + uy * 10])} ${P(q)}"/>`;
+    const r = 9;
+    if (b.sel && st !== 'next') g += `<circle class="sel-ring" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${r + 6}"/>`;
+    g += `<circle class="lf ${st}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${r}"/>`;
+    if (st === 'prog') { const a = f * 2 * Math.PI, rr = r - 3.6, x = q[0] + rr * Math.sin(a), y = q[1] - rr * Math.cos(a);
+      g += `<path class="arc" d="M${P(q)}V${(q[1] - rr).toFixed(1)}A${rr} ${rr} 0 ${f > .5 ? 1 : 0} 1 ${x.toFixed(1)} ${y.toFixed(1)}Z"/>`; }
+    const left = nx < -0.15 || (Math.abs(nx) <= 0.15 && q[0] < 420);
+    g += `<text class="lt${st === 'next' ? ' next' : ''}" x="${(q[0] + (left ? -16 : 16)).toFixed(1)}" y="${(q[1] + 4.5).toFixed(1)}" text-anchor="${left ? 'end' : 'start'}">${label}</text>`;
+  }
+  const e = b.c[3], d = tan(b.c, 1), L = Math.hypot(...d), lx = e[0] + d[0] / L * 14, ly = e[1] + d[1] / L * 14;
+  const an = Math.abs(d[0] / L) < .45 ? 'middle' : (d[0] < 0 ? 'end' : 'start');
+  const oy = Math.abs(d[0] / L) < .45 ? -8 : 5;
+  g += `<text class="bt" x="${lx.toFixed(1)}" y="${(ly + oy).toFixed(1)}" text-anchor="${an}">${b.name}<tspan class="bc" dx="6">${b.n}</tspan></text>`;
+}
+document.getElementById('tree').innerHTML = g;
+</script>
+</body>
+</html>
