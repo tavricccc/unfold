@@ -2,7 +2,7 @@ import { Icon } from '../icons';
 import { EFFORT_LABEL, MODEL_LABEL, type Accent, type Effort, type Model, type Settings, type Theme } from '../settings';
 
 const THEMES: [Theme, string][] = [['light', '淺色'], ['dark', '深色'], ['system', '跟隨系統']];
-const ACCENTS: [Accent, string, string][] = [['teal', '青', '#0d7480'], ['orange', '橘', '#c4521b'], ['coral', '珊瑚', '#c43b3b'], ['mono', '石板', '#1f3038']];
+const ACCENTS: [Accent, string, string][] = [['orange', '橘', '#c4521b'], ['teal', '青', '#0d7480'], ['coral', '珊瑚', '#c43b3b'], ['mono', '石板', '#1f3038']];
 const EFFORTS = Object.keys(EFFORT_LABEL) as Effort[];
 const MODELS: [Model, string][] = [['sonnet', '快，適合大部分問題'], ['opus', '最強，適合難題，比較慢'], ['haiku', '最快，講解比較簡短']];
 

@@ -11,7 +11,7 @@ const EFFORTS: Effort[] = ['auto', 'low', 'medium', 'high', 'xhigh', 'max'];
 export interface Settings { theme: Theme; accent: Accent; model: Model; effort: Effort }
 
 const KEY = 'unfold.settings';
-const DEFAULTS: Settings = { theme: 'system', accent: 'teal', model: 'sonnet', effort: 'auto' };
+const DEFAULTS: Settings = { theme: 'system', accent: 'orange', model: 'sonnet', effort: 'auto' };
 
 function load(): Settings {
   try {

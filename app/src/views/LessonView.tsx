@@ -25,6 +25,7 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
   const [step, setStep] = useState(0);
   const [animate, setAnimate] = useState(false);
   const widget = useRef<WidgetHandle>(null);
+  const narr = useRef<HTMLDivElement>(null);
   /** the part a follow-up will be written as; the view moves to its first item when it arrives */
   const jump = useRef<number | null>(null);
 
@@ -99,6 +100,33 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
     return () => removeEventListener('keydown', onKey);
   }, [next, prev, toChapter, cur, chs]);
 
+  // The narration moves by scrolling: the wheel steps through it, and whatever brings a new
+  // paragraph in (the wheel, 繼續, a key, a click) glides it to the middle of the column.
+  const wheel = useRef({ acc: 0, until: 0 });
+  useEffect(() => {
+    const el = narr.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return;
+      e.preventDefault();
+      const w = wheel.current, now = performance.now();
+      if (now < w.until) return;
+      w.acc += e.deltaY;
+      if (Math.abs(w.acc) < 40) return;
+      const down = w.acc > 0;
+      w.acc = 0; w.until = now + 420;
+      if (down) next(); else prev();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [next, prev, rec?.status]);
+
+  useEffect(() => {
+    const box = narr.current;
+    const at = box?.querySelector<HTMLElement>('.chap-pending .skel, .chap-pending .perr') ?? box?.querySelector<HTMLElement>('.para.now');
+    at?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [step, rec]);
+
   if (loadError) return <main className="panel plain"><header className="bar" /><div className="empty">讀不到這一課：{loadError}</div></main>;
   if (!rec) return <main className="panel plain"><header className="bar" /></main>;
 
@@ -118,7 +146,7 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
           </div>
         </header>
         <div className="body">
-          <div className="narr"><div className="narr-in">
+          <div className="narr" ref={narr}><div className="narr-in">
             <Ask question={rec.question} />
             {d?.title && <h2 className="chap-t">{d.title}</h2>}
             {!failed && <Drafting draft={d} />}
@@ -165,7 +193,7 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
           : <span className="fin"><Icon.check />學完了</span>}
       </header>
       <div className="body">
-        <div className="narr"><div className="narr-in">
+        <div className="narr" ref={narr}><div className="narr-in">
           {chs.slice(0, cur.chapter).map((c, n) => <Folded key={n} n={n} ch={c} onClick={() => toChapter(n)} />)}
           <Ask question={ch.question} />
           <Title key={cur.chapter} ch={ch} onRename={rename} />
@@ -173,7 +201,6 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
             <Fragment key={it.i}>
               {it.asked && it.part > 0 && it.i !== ch.items[0].i && <Ask question={it.asked} />}
               <p
-                ref={it.i === step ? (el) => el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) : undefined}
                 className={`para ${it.kind === 'text' ? 'reply ' : ''}${it.i < step ? 'past' : it.i === step ? 'now' : 'next'}`}
                 onClick={() => it.i !== step && go(it.i, it.i === step + 1)}
               >{rich(it.text)}</p>
