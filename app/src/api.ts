@@ -11,7 +11,8 @@ export interface Api {
   listLessons(): Promise<LessonMeta[]>;
   getLesson(id: string): Promise<LessonRecord>;
   setProgress(id: string, step: number): Promise<void>;
-  startLesson(question: string, model?: string, context?: string): Promise<string>;
+  startLesson(question: string, model?: string): Promise<string>;
+  continueLesson(id: string, question: string, model?: string): Promise<void>;
   cancelLesson(id: string): Promise<void>;
   claudeStatus(): Promise<string>;
   onLessonEvent(cb: (e: LessonEvent) => void): () => void;
@@ -25,7 +26,8 @@ function tauriApi(): Api {
     listLessons: () => call('list_lessons'),
     getLesson: (id) => call('get_lesson', { id }),
     setProgress: (id, step) => call('set_progress', { id, step }),
-    startLesson: (question, model, context) => call('start_lesson', { question, model, context }),
+    startLesson: (question, model) => call('start_lesson', { question, model }),
+    continueLesson: (id, question, model) => call('continue_lesson', { id, question, model }),
     cancelLesson: (id) => call('cancel_lesson', { id }),
     claudeStatus: () => call('claude_status'),
     onLessonEvent(cb) {
@@ -51,7 +53,8 @@ function mockApi(): Api {
   const emit = (e: LessonEvent) => bus.dispatchEvent(new CustomEvent('e', { detail: e }));
   const meta = (r: LessonRecord): LessonMeta => ({
     id: r.id, question: r.question, status: r.status, createdAt: r.createdAt, step: r.step,
-    title: r.lesson?.title, subject: r.lesson?.subject, total: r.lesson?.steps.length,
+    title: r.lesson?.title, subject: r.lesson?.subject,
+    total: r.lesson && r.lesson.steps.length + (r.more ?? []).reduce((n, p) => n + p.lesson.steps.length, 0),
   });
   return {
     async listLessons() { return [...store.values()].sort((a, b) => b.createdAt - a.createdAt).map(meta); },
@@ -82,10 +85,33 @@ function mockApi(): Api {
       timers.set(id, t);
       return id;
     },
+    async continueLesson(id, question) {
+      const r = store.get(id);
+      if (!r || r.status !== 'ready') throw new Error('這一課還沒準備好');
+      if (r.pending?.status === 'generating') throw new Error('上一個追問還在生成');
+      r.pending = { question, status: 'generating' };
+      const f = fixtures[(fixtures.findIndex((x) => x.lesson.title === r.lesson!.title) + 1 + (r.more?.length ?? 0)) % fixtures.length];
+      const { widget: _w, ...draft } = f.lesson;
+      const t: number[] = [];
+      t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在接著寫…' }), 300));
+      draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
+        r.pending!.draft = { ...draft, steps: draft.steps.slice(0, i + 1) };
+        emit({ id, type: 'partial', lesson: r.pending!.draft, more: true });
+      }, 600 + i * 300)));
+      t.push(window.setTimeout(() => {
+        r.more = [...(r.more ?? []), { question, lesson: f.lesson, model: f.model }];
+        r.pending = undefined;
+        timers.delete(id);
+        emit({ id, type: 'ready' });
+      }, 1200 + draft.steps.length * 300));
+      timers.set(id, t);
+    },
     async cancelLesson(id) {
       timers.get(id)?.forEach(clearTimeout);
       timers.delete(id);
-      Object.assign(store.get(id)!, { status: 'error', error: '你停止了這次生成' });
+      const r = store.get(id)!;
+      if (r.pending) Object.assign(r.pending, { status: 'error', error: '你停止了這次生成' });
+      else Object.assign(r, { status: 'error', error: '你停止了這次生成' });
       emit({ id, type: 'error', message: '你停止了這次生成' });
     },
     async claudeStatus() { return 'preview'; },

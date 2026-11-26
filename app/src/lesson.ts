@@ -61,6 +61,21 @@ export interface Lesson {
 
 export type Status = 'generating' | 'ready' | 'error';
 
+/** A follow-up answered inside a lesson: more steps appended after the lesson's own. */
+export interface Part {
+  question: string;
+  lesson: Lesson;
+  model?: string;
+}
+
+/** A follow-up still being written, or one that failed. */
+export interface Pending {
+  question: string;
+  status: 'generating' | 'error';
+  draft?: Partial<Lesson>;
+  error?: string;
+}
+
 /** A lesson as stored on disk by the backend. */
 export interface LessonRecord {
   id: string;
@@ -73,6 +88,8 @@ export interface LessonRecord {
   draft?: Partial<Lesson>;
   model?: string;
   error?: string;
+  more?: Part[];
+  pending?: Pending;
 }
 
 /** The light summary used by the sidebar and home. */
@@ -89,6 +106,6 @@ export interface LessonMeta {
 
 export type LessonEvent =
   | { id: string; type: 'status'; text: string }
-  | { id: string; type: 'partial'; lesson: Partial<Lesson> }
+  | { id: string; type: 'partial'; lesson: Partial<Lesson>; more?: boolean }
   | { id: string; type: 'ready' }
   | { id: string; type: 'error'; message: string };

@@ -37,9 +37,9 @@ export default function App() {
     return () => removeEventListener('keydown', onKey);
   }, []);
 
-  const ask = async (question: string, context?: string) => {
+  const ask = async (question: string) => {
     try {
-      const id = await api.startLesson(question, settings.model, context);
+      const id = await api.startLesson(question, settings.model);
       refresh();
       setView({ name: 'lesson', id });
     } catch (e) {
@@ -51,7 +51,7 @@ export default function App() {
     <div className="app">
       <Sidebar lessons={lessons} view={view} go={setView} claude={claude} />
       {view.name === 'home' && <Home lessons={lessons} model={settings.model} onAsk={(q) => ask(q)} open={(id) => setView({ name: 'lesson', id })} />}
-      {view.name === 'lesson' && <LessonView key={view.id} id={view.id} onAsk={ask} onProgress={refresh} />}
+      {view.name === 'lesson' && <LessonView key={view.id} id={view.id} model={settings.model} onAsk={ask} onProgress={refresh} />}
       {view.name === 'settings' && <SettingsView settings={settings} update={update} claude={claude} />}
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}</div>}
     </div>

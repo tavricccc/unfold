@@ -120,7 +120,7 @@ fn list_lessons(app: AppHandle) -> Result<Vec<Value>, String> {
       "id": rec["id"], "question": rec["question"], "status": rec["status"],
       "createdAt": rec["createdAt"], "step": rec["step"],
       "title": l["title"], "subject": l["subject"],
-      "total": l["steps"].as_array().map(|a| a.len()),
+      "total": l["steps"].as_array().map(|a| a.len() + more_steps(&rec)),
     }));
   }
   out.sort_by_key(|v| std::cmp::Reverse(v["createdAt"].as_u64().unwrap_or(0)));
@@ -151,8 +151,13 @@ fn cancel_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String) -> Result
   jobs.stopped.lock().map_err(|e| e.to_string())?.insert(id.clone());
   kill_tree(pid);
   let mut r = read_record(&app, &id)?;
-  r["status"] = json!("error");
-  r["error"] = json!("你停止了這次生成");
+  if r["pending"].is_object() {
+    r["pending"]["status"] = json!("error");
+    r["pending"]["error"] = json!("你停止了這次生成");
+  } else {
+    r["status"] = json!("error");
+    r["error"] = json!("你停止了這次生成");
+  }
   write_record(&app, &id, &r)?;
   let _ = app.emit("lesson-event", json!({ "id": id, "type": "error", "message": "你停止了這次生成" }));
   Ok(())
@@ -168,8 +173,12 @@ fn claude_status() -> Result<String, String> {
   Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+fn more_steps(rec: &Value) -> usize {
+  rec["more"].as_array().map_or(0, |m| m.iter().map(|p| p["lesson"]["steps"].as_array().map_or(0, |a| a.len())).sum())
+}
+
 #[tauri::command]
-fn start_lesson(app: AppHandle, question: String, model: Option<String>, context: Option<String>) -> Result<String, String> {
+fn start_lesson(app: AppHandle, question: String, model: Option<String>) -> Result<String, String> {
   let question = question.trim().to_string();
   if question.is_empty() {
     return Err("問題是空的".into());
@@ -177,27 +186,70 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
   let id = format!("{:x}", now_ms());
   let rec = json!({ "id": id, "question": question, "status": "generating", "createdAt": now_ms() as u64, "step": 0 });
   write_record(&app, &id, &rec)?;
+  spawn_job(app.clone(), id.clone(), question, model, false);
+  Ok(id)
+}
 
-  let prompt = match context.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
-    Some(c) => format!("（接續上一課：{c}）\n{question}"),
-    None => question.clone(),
-  };
+/// Asks a follow-up inside an existing lesson: the answer is appended as more steps of the same lesson.
+#[tauri::command]
+fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, question: String, model: Option<String>) -> Result<(), String> {
+  let question = question.trim().to_string();
+  if question.is_empty() {
+    return Err("問題是空的".into());
+  }
+  if jobs.running.lock().map_err(|e| e.to_string())?.contains_key(&id) {
+    return Err("這一課還在生成".into());
+  }
+  let mut rec = read_record(&app, &id)?;
+  if rec["pending"]["status"] == "generating" {
+    return Err("上一個追問還在生成".into());
+  }
+  if rec["status"] != "ready" {
+    return Err("這一課還沒準備好".into());
+  }
+  let l = &rec["lesson"];
+  let mut told = vec![];
+  let mut parts = vec![(rec["question"].as_str().unwrap_or(""), l)];
+  if let Some(m) = rec["more"].as_array() {
+    parts.extend(m.iter().map(|p| (p["question"].as_str().unwrap_or(""), &p["lesson"])));
+  }
+  let mut n = 0;
+  for (q, p) in parts {
+    told.push(format!("學生問：{q}"));
+    for st in p["steps"].as_array().into_iter().flatten() {
+      n += 1;
+      told.push(format!("{n}. {}", st["text"].as_str().unwrap_or("")));
+    }
+  }
+  let prompt = format!(
+    "這是一堂正在上的課，學生在課裡追問。請把回答寫成這堂課接下來的新步驟，從已經講過的地方接著講，不要重複已講過的內容，也不要重新介紹整個主題。\n\
+     title 寫這一段的小標題；crumbs 沿用原本的：{crumbs}。依照追問的內容選最適合的新元件。\n\n\
+     課程標題：{title}\n已經講過的內容：\n{told}\n\n學生現在追問：{question}",
+    crumbs = l["crumbs"], title = l["title"].as_str().unwrap_or(""), told = told.join("\n"),
+  );
+  rec["pending"] = json!({ "question": question, "status": "generating" });
+  write_record(&app, &id, &rec)?;
+  spawn_job(app.clone(), id, prompt, model, true);
+  Ok(())
+}
+
+/// Runs the sidecar for one lesson. `more` routes the result into the lesson's pending follow-up
+/// instead of the lesson itself.
+fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>, more: bool) {
   let req = json!({ "question": prompt, "model": model });
-  let app2 = app.clone();
-  let id2 = id.clone();
   std::thread::spawn(move || {
     let fail = |msg: String| {
       log::error!("lesson {id2} failed: {msg}");
       if let Ok(mut r) = read_record(&app2, &id2) {
-        r["status"] = json!("error");
-        r["error"] = json!(msg);
+        let t = if more { &mut r["pending"] } else { &mut r };
+        t["status"] = json!("error");
+        t["error"] = json!(msg);
         if let Err(e) = write_record(&app2, &id2, &r) {
           log::error!("could not save error state: {e}");
         }
       }
       let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "error", "message": msg }));
     };
-
     let mut cmd = sidecar_command();
     if let Some(p) = claude_path() {
       cmd.env("UNFOLD_CLAUDE_PATH", p);
@@ -238,23 +290,36 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
       match ev["type"].as_str() {
         Some("partial") => {
           if let Ok(mut r) = read_record(&app2, &id2) {
-            r["draft"] = ev["lesson"].clone();
+            let t = if more { &mut r["pending"] } else { &mut r };
+            t["draft"] = ev["lesson"].clone();
             if let Err(e) = write_record(&app2, &id2, &r) {
               log::warn!("could not save draft: {e}");
             }
           }
-          let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "partial", "lesson": ev["lesson"] }));
+          let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "partial", "lesson": ev["lesson"], "more": more }));
         }
         Some("lesson") => {
           got_result = true;
           match read_record(&app2, &id2) {
             Ok(mut r) => {
-              r["status"] = json!("ready");
-              r["lesson"] = ev["lesson"].clone();
-              if let Some(o) = r.as_object_mut() {
-                o.remove("draft");
+              if more {
+                let q = r["pending"]["question"].clone();
+                let part = json!({ "question": q, "lesson": ev["lesson"], "model": ev["model"] });
+                match r["more"].as_array_mut() {
+                  Some(m) => m.push(part),
+                  None => r["more"] = json!([part]),
+                }
+                if let Some(o) = r.as_object_mut() {
+                  o.remove("pending");
+                }
+              } else {
+                r["status"] = json!("ready");
+                r["lesson"] = ev["lesson"].clone();
+                if let Some(o) = r.as_object_mut() {
+                  o.remove("draft");
+                }
+                r["model"] = ev["model"].clone();
               }
-              r["model"] = ev["model"].clone();
               if let Err(e) = write_record(&app2, &id2, &r) {
                 return fail(format!("無法儲存課程：{e}"));
               }
@@ -289,7 +354,6 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, context
       fail(format!("sidecar 結束但沒有結果（{status:?}）{}", err.trim()));
     }
   });
-  Ok(id)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -305,9 +369,10 @@ pub fn run() {
           for entry in entries.flatten() {
             let Some(id) = entry.path().file_stem().and_then(|s| s.to_str()).map(String::from) else { continue };
             if let Ok(mut r) = read_record(&handle, &id) {
-              if r["status"] == "generating" {
-                r["status"] = json!("error");
-                r["error"] = json!("上次生成到一半被中斷了");
+              let t = if r["pending"].is_object() { &mut r["pending"] } else { &mut r };
+              if t["status"] == "generating" {
+                t["status"] = json!("error");
+                t["error"] = json!("上次生成到一半被中斷了");
                 if let Err(e) = write_record(&handle, &id, &r) {
                   log::warn!("could not reset {id}: {e}");
                 }
@@ -318,7 +383,7 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![list_lessons, get_lesson, set_progress, delete_lesson, claude_status, start_lesson, cancel_lesson])
+    .invoke_handler(tauri::generate_handler![list_lessons, get_lesson, set_progress, delete_lesson, claude_status, start_lesson, continue_lesson, cancel_lesson])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
 }
