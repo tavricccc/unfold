@@ -1,7 +1,8 @@
 // Backend access. Inside Tauri this calls the Rust commands; in a plain browser (design review,
 // screenshots) it falls back to an in-memory store seeded with recorded lessons.
-import type { LessonEvent, LessonMeta, LessonRecord } from './lesson';
+import type { LessonEvent, LessonMeta, LessonRecord, Part } from './lesson';
 import type { Gen } from './settings';
+import { chaptersOf, itemsOf } from './chapters';
 import bubble from '../fixtures/bubble.json';
 import deriv from '../fixtures/deriv.json';
 import pyth from '../fixtures/pyth.json';
@@ -13,7 +14,9 @@ export interface Api {
   getLesson(id: string): Promise<LessonRecord>;
   setProgress(id: string, step: number): Promise<void>;
   startLesson(question: string, gen?: Gen): Promise<string>;
-  continueLesson(id: string, question: string, gen?: Gen): Promise<void>;
+  /** a follow-up asked while reading `chapter` (0-based) */
+  continueLesson(id: string, question: string, gen: Gen | undefined, chapter: number): Promise<void>;
+  renameChapter(id: string, chapter: number, name: string): Promise<void>;
   cancelLesson(id: string): Promise<void>;
   claudeStatus(): Promise<string>;
   onLessonEvent(cb: (e: LessonEvent) => void): () => void;
@@ -28,7 +31,8 @@ function tauriApi(): Api {
     getLesson: (id) => call('get_lesson', { id }),
     setProgress: (id, step) => call('set_progress', { id, step }),
     startLesson: (question, gen) => call('start_lesson', { question, model: gen?.model, effort: gen?.effort }),
-    continueLesson: (id, question, gen) => call('continue_lesson', { id, question, model: gen?.model, effort: gen?.effort }),
+    continueLesson: (id, question, gen, chapter) => call('continue_lesson', { id, question, model: gen?.model, effort: gen?.effort, chapter }),
+    renameChapter: (id, chapter, name) => call('rename_chapter', { id, chapter, name }),
     cancelLesson: (id) => call('cancel_lesson', { id }),
     claudeStatus: () => call('claude_status'),
     onLessonEvent(cb) {
@@ -58,7 +62,7 @@ function mockApi(): Api {
   const meta = (r: LessonRecord): LessonMeta => ({
     id: r.id, question: r.question, status: r.status, createdAt: r.createdAt, step: r.step,
     title: r.lesson?.title, subject: r.lesson?.subject,
-    total: r.lesson && r.lesson.steps.length + (r.more ?? []).reduce((n, p) => n + p.lesson.steps.length, 0),
+    total: r.lesson && itemsOf(chaptersOf(r)).length,
   });
   return {
     async listLessons() { return [...store.values()].sort((a, b) => b.createdAt - a.createdAt).map(meta); },
@@ -89,26 +93,44 @@ function mockApi(): Api {
       timers.set(id, t);
       return id;
     },
-    async continueLesson(id, question) {
+    // Preview only: follow-ups take turns between a text reply and a new chapter from the fixtures.
+    async continueLesson(id, question, _gen, chapter) {
       const r = store.get(id);
       if (!r || r.status !== 'ready') throw new Error('這一課還沒準備好');
       if (r.pending?.status === 'generating') throw new Error('上一個追問還在生成');
-      r.pending = { question, status: 'generating' };
-      const f = fixtures[(fixtures.findIndex((x) => x.lesson.title === r.lesson!.title) + 1 + (r.more?.length ?? 0)) % fixtures.length];
-      const { widget: _w, ...draft } = f.lesson;
+      r.pending = { question, status: 'generating', at: chapter };
+      const n = r.more?.length ?? 0;
       const t: number[] = [];
-      t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在接著寫…' }), 300));
-      draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
-        r.pending!.draft = { ...draft, steps: draft.steps.slice(0, i + 1) };
-        emit({ id, type: 'partial', lesson: r.pending!.draft, more: true });
-      }, 600 + i * 300)));
-      t.push(window.setTimeout(() => {
-        r.more = [...(r.more ?? []), { question, lesson: f.lesson, model: f.model, cost: PREVIEW_COST }];
+      const done = (part: Part) => t.push(window.setTimeout(() => {
+        r.more = [...(r.more ?? []), part];
         r.pending = undefined;
         timers.delete(id);
         emit({ id, type: 'ready' });
-      }, 1200 + draft.steps.length * 300));
+      }, 2400));
+      t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在想怎麼教…' }), 300));
+      if (n % 2 === 0) {
+        const text = '好問題背後通常是同一件事：**每一步只看眼前兩個數字**。所以不用記整個排序過程，只要跟著那一對往右移就好。';
+        for (let k = 1; k <= 4; k++) t.push(window.setTimeout(() => {
+          r.pending!.draft = { mode: 'text', text: text.slice(0, Math.ceil((text.length * k) / 4)) };
+          emit({ id, type: 'partial', lesson: r.pending!.draft, more: true });
+        }, 400 + k * 350));
+        done({ question, mode: 'text', at: chapter, text, suggestions: r.lesson!.suggestions, model: 'preview', cost: PREVIEW_COST });
+      } else {
+        const f = fixtures[(fixtures.findIndex((x) => x.lesson.title === r.lesson!.title) + 1 + n) % fixtures.length];
+        const { widget: _w, ...draft } = f.lesson;
+        draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
+          r.pending!.draft = { mode: 'chapter', ...draft, steps: draft.steps.slice(0, i + 1) };
+          emit({ id, type: 'partial', lesson: r.pending!.draft, more: true });
+        }, 500 + i * 250)));
+        done({ question, mode: 'chapter', lesson: f.lesson, model: f.model, cost: PREVIEW_COST });
+      }
       timers.set(id, t);
+    },
+    async renameChapter(id, chapter, name) {
+      const r = store.get(id);
+      if (!r) return;
+      r.names = { ...r.names };
+      if (name.trim()) r.names[chapter] = name.trim(); else delete r.names[chapter];
     },
     async cancelLesson(id) {
       timers.get(id)?.forEach(clearTimeout);

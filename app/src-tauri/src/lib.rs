@@ -17,6 +17,13 @@ fn now_ms() -> u128 {
   SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
 
+/// Where the sidecar runs, so Claude Code files Unfold's session transcripts in one place.
+fn sessions_dir(app: &AppHandle) -> Result<PathBuf, String> {
+  let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("sessions");
+  fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+  Ok(dir)
+}
+
 fn lessons_dir(app: &AppHandle) -> Result<PathBuf, String> {
   let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("lessons");
   fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -139,6 +146,23 @@ fn set_progress(app: AppHandle, id: String, step: u32) -> Result<(), String> {
   write_record(&app, &id, &rec)
 }
 
+/// Renames a chapter (0-based); an empty name goes back to the one Claude wrote.
+#[tauri::command]
+fn rename_chapter(app: AppHandle, id: String, chapter: usize, name: String) -> Result<(), String> {
+  let mut rec = read_record(&app, &id)?;
+  let name = name.trim();
+  if !rec["names"].is_object() {
+    rec["names"] = json!({});
+  }
+  let names = rec["names"].as_object_mut().ok_or("names")?;
+  if name.is_empty() {
+    names.remove(&chapter.to_string());
+  } else {
+    names.insert(chapter.to_string(), json!(name));
+  }
+  write_record(&app, &id, &rec)
+}
+
 #[tauri::command]
 fn delete_lesson(app: AppHandle, id: String) -> Result<(), String> {
   fs::remove_file(lesson_path(&app, &id)?).map_err(|e| e.to_string())
@@ -174,7 +198,12 @@ fn claude_status() -> Result<String, String> {
 }
 
 fn more_steps(rec: &Value) -> usize {
-  rec["more"].as_array().map_or(0, |m| m.iter().map(|p| p["lesson"]["steps"].as_array().map_or(0, |a| a.len())).sum())
+  // what the learner pages through: a chapter's or extend's steps, or one text reply
+  rec["more"].as_array().map_or(0, |m| m.iter().map(|p| match p["mode"].as_str() {
+    Some("text") => 1,
+    Some("extend") => p["steps"].as_array().map_or(0, |a| a.len()),
+    _ => p["lesson"]["steps"].as_array().map_or(0, |a| a.len()),
+  }).sum())
 }
 
 #[tauri::command]
@@ -186,13 +215,14 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, effort:
   let id = format!("{:x}", now_ms());
   let rec = json!({ "id": id, "question": question, "status": "generating", "createdAt": now_ms() as u64, "step": 0 });
   write_record(&app, &id, &rec)?;
-  spawn_job(app.clone(), id.clone(), question, model, effort, false);
+  spawn_job(app.clone(), id.clone(), json!({ "question": question, "model": model, "effort": effort }), false);
   Ok(id)
 }
 
-/// Asks a follow-up inside an existing lesson: the answer is appended as more steps of the same lesson.
+/// Asks a follow-up inside an existing lesson, while the learner reads `chapter`. Claude answers with
+/// a new chapter, more steps in that chapter, or a text reply; the answer is appended to `more`.
 #[tauri::command]
-fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, question: String, model: Option<String>, effort: Option<String>) -> Result<(), String> {
+fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, question: String, model: Option<String>, effort: Option<String>, chapter: Option<usize>) -> Result<(), String> {
   let question = question.trim().to_string();
   if question.is_empty() {
     return Err("問題是空的".into());
@@ -207,36 +237,17 @@ fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, questio
   if rec["status"] != "ready" {
     return Err("這一課還沒準備好".into());
   }
-  let l = &rec["lesson"];
-  let mut told = vec![];
-  let mut parts = vec![(rec["question"].as_str().unwrap_or(""), l)];
-  if let Some(m) = rec["more"].as_array() {
-    parts.extend(m.iter().map(|p| (p["question"].as_str().unwrap_or(""), &p["lesson"])));
-  }
-  let mut n = 0;
-  for (q, p) in parts {
-    told.push(format!("學生問：{q}"));
-    for st in p["steps"].as_array().into_iter().flatten() {
-      n += 1;
-      told.push(format!("{n}. {}", st["text"].as_str().unwrap_or("")));
-    }
-  }
-  let prompt = format!(
-    "這是一堂正在上的課，學生在課裡追問。請把回答寫成這堂課接下來的新步驟，從已經講過的地方接著講，不要重複已講過的內容，也不要重新介紹整個主題。\n\
-     title 寫這一段的小標題；crumbs 沿用原本的：{crumbs}。依照追問的內容選最適合的新元件。\n\n\
-     課程標題：{title}\n已經講過的內容：\n{told}\n\n學生現在追問：{question}",
-    crumbs = l["crumbs"], title = l["title"].as_str().unwrap_or(""), told = told.join("\n"),
-  );
-  rec["pending"] = json!({ "question": question, "status": "generating" });
+  // The sidecar reads the lesson as it stood before this question: chapters, current visuals, session.
+  let req = json!({ "question": question, "model": model, "effort": effort, "record": rec.clone(), "at": chapter });
+  rec["pending"] = json!({ "question": question, "status": "generating", "at": chapter });
   write_record(&app, &id, &rec)?;
-  spawn_job(app.clone(), id, prompt, model, effort, true);
+  spawn_job(app.clone(), id, req, true);
   Ok(())
 }
 
 /// Runs the sidecar for one lesson. `more` routes the result into the lesson's pending follow-up
 /// instead of the lesson itself.
-fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>, effort: Option<String>, more: bool) {
-  let req = json!({ "question": prompt, "model": model, "effort": effort });
+fn spawn_job(app2: AppHandle, id2: String, req: Value, more: bool) {
   std::thread::spawn(move || {
     let fail = |msg: String| {
       log::error!("lesson {id2} failed: {msg}");
@@ -251,6 +262,11 @@ fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>
       let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "error", "message": msg }));
     };
     let mut cmd = sidecar_command();
+    // Claude Code keeps each session's transcript under the folder it runs in; keep Unfold's together.
+    match sessions_dir(&app2) {
+      Ok(d) => { cmd.current_dir(d); }
+      Err(e) => log::warn!("no sessions folder, using the default: {e}"),
+    }
     if let Some(p) = claude_path() {
       cmd.env("UNFOLD_CLAUDE_PATH", p);
     }
@@ -298,13 +314,22 @@ fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>
           }
           let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "partial", "lesson": ev["lesson"], "more": more }));
         }
-        Some("lesson") => {
+        Some("session") => {
+          if let Ok(mut r) = read_record(&app2, &id2) {
+            r["session"] = ev["id"].clone();
+            if let Err(e) = write_record(&app2, &id2, &r) {
+              log::warn!("could not save session: {e}");
+            }
+          }
+        }
+        Some("lesson") | Some("part") => {
           got_result = true;
           match read_record(&app2, &id2) {
             Ok(mut r) => {
               if more {
-                let q = r["pending"]["question"].clone();
-                let part = json!({ "question": q, "lesson": ev["lesson"], "model": ev["model"], "cost": ev["cost"] });
+                let mut part = ev["part"].clone();
+                part["model"] = ev["model"].clone();
+                part["cost"] = ev["cost"].clone();
                 match r["more"].as_array_mut() {
                   Some(m) => m.push(part),
                   None => r["more"] = json!([part]),
@@ -384,7 +409,7 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![list_lessons, get_lesson, set_progress, delete_lesson, claude_status, start_lesson, continue_lesson, cancel_lesson])
+    .invoke_handler(tauri::generate_handler![list_lessons, get_lesson, set_progress, rename_chapter, delete_lesson, claude_status, start_lesson, continue_lesson, cancel_lesson])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
 }

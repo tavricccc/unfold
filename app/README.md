@@ -29,13 +29,16 @@ Fonts are bundled in `src/fonts`; `bun tools/fetch-fonts.ts` rebuilds them (Inst
 
 ## How it fits
 
-- `sidecar/agent.ts` — one question in on stdin, NDJSON events out (`status`, `lesson`, `error`). Calls the Agent SDK with no tools, a custom system prompt and a JSON-schema output (`sidecar/prompt.ts`).
-- `src-tauri/src/lib.rs` — starts the sidecar with `bun`, saves lessons as JSON in the app data folder, emits `lesson-event` to the UI.
-- `sidecar/partial.ts` — parses the half-written lesson JSON as it streams, so title and steps reach the UI before the widget is finished (the schema puts `widget` last).
+- `sidecar/agent.ts` — one question in on stdin, NDJSON events out (`status`, `session`, `partial`, `lesson` / `part`, `error`). Calls the Agent SDK with a custom system prompt, one JSON-schema output for every answer (`sidecar/prompt.ts`), and one tool, `read_chapter`, that lets Claude read a chapter as it is now (steps and the current visual after edits).
+- Every answer picks a mode: `chapter` (new chapter with its own visual; every lesson starts with one), `extend` (more steps in the chapter being read, optionally redrawing the visual, for html usually through find/replace edits), or `text` (a reply in words only). The chapter titles are Claude's; the learner can rename them.
+- Follow-ups resume the lesson's Claude Code session (`session` in the lesson file), so Claude keeps its own earlier answers in context and the prompt cache holds. The system prompt and the tool list never change between calls for the same reason. If the session cannot be resumed, the sidecar starts a new one from an outline of the lesson. Sessions live under the app data `sessions` folder.
+- `src/chapters.ts` — how a lesson file reads as chapters, items and visual versions; shared by the UI and the sidecar.
+- `src-tauri/src/lib.rs` — starts the sidecar, saves lessons as JSON in the app data folder (with each run's cost), emits `lesson-event` to the UI.
+- `sidecar/partial.ts` — parses the half-written answer as it streams, so title and steps (or the reply text) reach the UI before the widget is finished.
 - `src/` — React UI. Widgets live in `src/widgets/`:
   - `BubbleSort`, built in.
   - `Plot`, a Mafs coordinate plane described by Claude as params + items (function, area, riemann, tangent, point, vector, segment, polygon, text). Steps animate params; expressions go through the small parser in `expr.ts`, never `eval`.
   - `HtmlWidget`, Claude-written HTML in a sandboxed iframe, driven by `postMessage({ type: 'step', index, animate })`.
 - Stop: the composer's stop button kills the sidecar process tree.
 
-Keys in a lesson: → or Enter for the next step, ← for the previous one. Pressing next while a step is still animating finishes that animation first.
+Keys in a lesson: → or Enter for the next step, ← for the previous one, PageDown / PageUp for the next or previous chapter. Pressing next while a step is still animating finishes that animation first. Double-click a chapter title (or its pencil) to rename it.

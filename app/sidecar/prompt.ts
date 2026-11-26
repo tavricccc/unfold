@@ -1,6 +1,5 @@
-// The lesson script contract shared by the sidecar (what Claude writes) and the app (what it plays).
-// Keep in sync with src/lesson.ts. Property order matters: the app streams title and steps
-// to the learner before the (long) widget arrives, so "widget" comes last.
+// The answer contract shared by the sidecar (what Claude writes) and the app (what it plays).
+// Keep in sync with src/lesson.ts.
 
 const expr = { type: ['string', 'number'], description: 'number or expression in x and parameter names' } as const;
 const pair = { type: 'array', items: expr, minItems: 2, maxItems: 2 } as const;
@@ -69,56 +68,78 @@ const PLOT = {
   },
 } as const;
 
-export const LESSON_SCHEMA = {
+const STEP = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'subject', 'crumbs', 'steps', 'task', 'suggestions', 'widget'],
+  required: ['text'],
   properties: {
-    title: { type: 'string', description: 'Short lesson title, e.g. "泡泡排序：相鄰比較與回合"' },
-    subject: { type: 'string', enum: ['algorithm', 'math', 'physics', 'language', 'art', 'other'] },
-    crumbs: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 2, description: 'Field then sub-field, e.g. ["數學", "微積分"]' },
-    steps: {
+    text: { type: 'string', description: '1-3 short sentences. Wrap the one key idea in **double asterisks**.' },
+    pass: { type: 'integer', minimum: 0, description: 'bubble-sort only: full passes completed when this step is shown' },
+    set: {
       type: 'array',
-      minItems: 3,
-      maxItems: 7,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['text'],
-        properties: {
-          text: { type: 'string', description: '1-3 short sentences. Wrap the one key idea in **double asterisks**.' },
-          pass: { type: 'integer', minimum: 0, description: 'bubble-sort only: full passes completed when this step is shown' },
-          set: {
-            type: 'array',
-            description: 'plot only: parameters to animate to when this step is shown',
-            items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } },
-          },
-        },
-      },
+      description: 'plot only: parameters to animate to when this step is shown',
+      items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } },
     },
-    task: { type: 'string', description: 'One sentence telling the learner what to look at or try with the widget.' },
+  },
+} as const;
+
+const WIDGET = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['kind'],
+  properties: {
+    kind: { type: 'string', enum: ['bubble-sort', 'plot', 'html'] },
+    values: { type: 'array', items: { type: 'integer', minimum: 1, maximum: 99 }, minItems: 3, maxItems: 8, description: 'bubble-sort only: the list to sort' },
+    plot: PLOT,
+    html: { type: 'string', description: 'html only: the self-contained widget, see the system prompt' },
+  },
+} as const;
+
+/**
+ * Every answer, the first and each follow-up, uses this one schema, so the tool list Claude sees
+ * never changes and a resumed session keeps hitting the prompt cache. Which fields a mode needs is
+ * checked in the sidecar. Property order matters: title and steps (or text) stream to the learner
+ * before the long widget arrives, so "widget" and "edits" come last.
+ */
+export const RESPONSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['mode', 'suggestions'],
+  properties: {
+    mode: { type: 'string', enum: ['chapter', 'extend', 'text'], description: 'how you answer; see the system prompt' },
+    title: { type: 'string', description: 'chapter: short chapter title, e.g. "泡泡排序：相鄰比較與回合"' },
+    subject: { type: 'string', enum: ['algorithm', 'math', 'physics', 'language', 'art', 'other'], description: 'chapter only' },
+    crumbs: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 2, description: 'chapter only: field then sub-field, e.g. ["數學", "微積分"]' },
+    text: { type: 'string', description: 'text: the reply, 1-6 short sentences; **double asterisks** around at most one key phrase' },
+    steps: { type: 'array', maxItems: 7, items: STEP, description: 'chapter: 3-7 steps; extend: 1-5 steps that continue the chapter' },
+    task: { type: 'string', description: 'chapter (and extend with a redrawn widget): one sentence on what to look at or try' },
     suggestions: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 3, description: 'Short follow-up questions in the learner\'s voice.' },
-    widget: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['kind'],
-      properties: {
-        kind: { type: 'string', enum: ['bubble-sort', 'plot', 'html'] },
-        values: { type: 'array', items: { type: 'integer', minimum: 1, maximum: 99 }, minItems: 3, maxItems: 8, description: 'bubble-sort only: the list to sort' },
-        plot: PLOT,
-        html: { type: 'string', description: 'html only: the self-contained widget, see the system prompt' },
+    widget: { ...WIDGET, description: 'chapter: the visual; extend: a full replacement, only when the visual must change and edits would not do' },
+    edits: {
+      type: 'array',
+      description: 'extend on an html widget: exact find/replace edits applied in order to its current html',
+      items: {
+        type: 'object', additionalProperties: false, required: ['find', 'replace'],
+        properties: { find: { type: 'string', description: 'text that occurs exactly once in the current html' }, replace: { type: 'string' } },
       },
     },
   },
 } as const;
 
-export const SYSTEM_PROMPT = `You are the lesson writer inside Unfold, a personal tutor app. The learner asks one question; you answer with a short interactive lesson as structured output. You have no tools. Do not ask questions back.
+export const SYSTEM_PROMPT = `You are the tutor inside Unfold, a personal tutor app. A lesson is a conversation: the learner asks a question, you answer with a short interactive chapter, and they keep asking follow-ups inside the same lesson. Every answer is structured output. Do not ask questions back.
 
 Write in the learner's language (Traditional Chinese if they write Chinese). Plain, warm, concrete. No filler, no "great question".
 
-Write the fields in this order: title, subject, crumbs, steps, task, suggestions, widget. The learner starts reading the steps while you are still drawing the widget, so plan the widget first in your head, then write the steps so they match it exactly.
+Choose how to answer with "mode". Pick the lightest one that truly answers:
+- "chapter": a new chapter with its own visual: title, subject, crumbs, steps, task, suggestions, widget. The first answer of a lesson is always a chapter. For a follow-up, open a chapter when it needs a different picture or moves to a new idea. The title is yours to choose: short, names the idea.
+- "extend": more steps in the chapter the learner is reading, continuing its numbering, when the same picture can carry the answer: steps (1-5), suggestions. Step indices continue after the chapter's last step, so the visual must render them: a bubble-sort or plot visual plays new steps from "pass" or "set" with no change; an html visual needs "edits" (exact find/replace on its current html) that make it handle the new indices while still rendering the earlier ones. Send a whole "widget" (and "task") only when edits would not do. Edits keep the output small; prefer them.
+- "text": a reply in words only, when the learner needs an explanation, a definition, a check of their thinking or a short aside, and the picture does not need to change: text, suggestions.
 
-A lesson is 3 to 7 steps. Each step is one idea the learner can see on the widget. The first step sets up the picture, the middle steps build the mechanism, the last step lands the answer to their question. Wrap the single most important phrase of a step in **double asterisks**; at most one per step. Never name colours in the text (the learner picks the accent colour); refer to things by their label or role, e.g. 「切線」「虛線」「強調的那條線」.
+The learner may ask while reading any chapter; the message says which. You can call read_chapter to see a chapter exactly as it is now (its steps and the full current visual, after earlier edits) before you continue or edit it. Call it whenever you are not sure what the current visual contains; never guess the html you edit.
+
+Write the fields in the schema order. The learner starts reading the steps while you are still drawing the widget, so plan the widget first in your head, then write the steps so they match it exactly.
+
+A chapter is 3 to 7 steps. Each step is one idea the learner can see on the widget. The first step sets up the picture, the middle steps build the mechanism, the last step lands the answer to their question. Wrap the single most important phrase of a step in **double asterisks**; at most one per step. Never name colours in the text (the learner picks the accent colour); refer to things by their label or role, e.g. 「切線」「虛線」「強調的那條線」.
 
 Choose the widget:
 
@@ -141,4 +162,4 @@ Choose the widget:
    - Mathematics should move: grow areas, slide shapes, trace curves, rearrange pieces. Show the numbers changing next to the picture.
    - Keep it under about 10 KB.
 
-"task" is one sentence telling the learner what to look at or try. "suggestions" are 2-3 short follow-up questions in the learner's voice.`;
+"task" is one sentence telling the learner what to look at or try. "suggestions" are 2-3 short follow-up questions in the learner's voice, for every mode.`;

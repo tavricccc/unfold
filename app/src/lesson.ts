@@ -70,19 +70,46 @@ export interface Cost {
   cacheWrite: number;
 }
 
-/** A follow-up answered inside a lesson: more steps appended after the lesson's own. */
+/**
+ * How Claude chose to answer a follow-up:
+ * - chapter: a new chapter with its own visual (also how every lesson starts)
+ * - extend:  more steps in the chapter being read, on its visual or on a redrawn one
+ * - text:    a reply in words only; the visual stays as it is
+ */
+export type Mode = 'chapter' | 'extend' | 'text';
+
+/** A follow-up answered inside a lesson. */
 export interface Part {
   question: string;
-  lesson: Lesson;
+  /** missing on follow-ups saved before modes existed: those are chapters */
+  mode?: Mode;
+  /** chapter: the new chapter */
+  lesson?: Lesson;
+  /** extend and text: the chapter (0-based) the learner was reading when they asked */
+  at?: number;
+  /** extend: the steps added, numbered on after the chapter's own */
+  steps?: Step[];
+  /** extend: the redrawn visual, when the visual changes (it still plays the earlier steps) */
+  widget?: Widget;
+  /** extend: what to try on the redrawn visual */
+  task?: string;
+  /** text: the reply */
+  text?: string;
+  suggestions?: string[];
   model?: string;
   cost?: Cost;
 }
+
+/** What Claude streams before it finishes: enough to show the reply as it is written. */
+export type Draft = Partial<Lesson> & { mode?: Mode; text?: string };
 
 /** A follow-up still being written, or one that failed. */
 export interface Pending {
   question: string;
   status: 'generating' | 'error';
-  draft?: Partial<Lesson>;
+  /** the chapter being read when it was asked */
+  at?: number;
+  draft?: Draft;
   error?: string;
 }
 
@@ -95,12 +122,16 @@ export interface LessonRecord {
   step: number;
   lesson?: Lesson;
   /** title and steps written so far while generating */
-  draft?: Partial<Lesson>;
+  draft?: Draft;
   model?: string;
   cost?: Cost;
   error?: string;
   more?: Part[];
   pending?: Pending;
+  /** the learner's own chapter titles, by chapter index */
+  names?: Record<string, string>;
+  /** the Claude Code session the lesson was written in; follow-ups resume it */
+  session?: string;
 }
 
 /** The light summary used by the sidebar and home. */
@@ -117,6 +148,6 @@ export interface LessonMeta {
 
 export type LessonEvent =
   | { id: string; type: 'status'; text: string }
-  | { id: string; type: 'partial'; lesson: Partial<Lesson>; more?: boolean }
+  | { id: string; type: 'partial'; lesson: Draft; more?: boolean }
   | { id: string; type: 'ready' }
   | { id: string; type: 'error'; message: string };

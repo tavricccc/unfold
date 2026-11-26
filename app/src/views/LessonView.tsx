@@ -2,7 +2,8 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import { api } from '../api';
 import { Composer } from '../components/Composer';
 import { Icon, rich } from '../icons';
-import type { Cost, Lesson, LessonRecord, Part } from '../lesson';
+import { chaptersOf, itemsOf, lastSuggestions, type Chapter } from '../chapters';
+import type { Cost, Draft, LessonRecord, Step, Widget } from '../lesson';
 import { EFFORT_LABEL, MODEL_LABEL, type Gen } from '../settings';
 import { BubbleSort } from '../widgets/BubbleSort';
 import { HtmlWidget } from '../widgets/HtmlWidget';
@@ -11,8 +12,9 @@ import type { WidgetHandle } from '../widgets/types';
 
 /**
  * A lesson reads as one narration beside its visual: the paragraph being read is bright, the ones
- * before it fade, the next one shows faintly. Each follow-up is a chapter; chapters other than the
- * current one fold into a row, and the chapter menu and the progress ticks jump anywhere.
+ * before it fade, the next one shows faintly. A follow-up's answer lands where Claude chose: a new
+ * chapter, more steps in the chapter being read, or a text reply in it. Chapters other than the
+ * current one fold into a row; the chapter menu and the progress ticks jump anywhere.
  */
 export function LessonView({ id, gen, onAsk, onProgress }: {
   id: string; gen: Gen; onAsk: (q: string) => void; onProgress: () => void;
@@ -23,17 +25,18 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
   const [step, setStep] = useState(0);
   const [animate, setAnimate] = useState(false);
   const widget = useRef<WidgetHandle>(null);
-  /** first step of a follow-up being written; the view moves there when it arrives */
+  /** the part a follow-up will be written as; the view moves to its first item when it arrives */
   const jump = useRef<number | null>(null);
 
   const load = useCallback(() => {
     api.getLesson(id).then((r) => {
       setRec(r);
       const j = jump.current;
-      if (j != null && !r.pending && flatten(r).length > j) {
+      const landed = j == null || r.pending ? undefined : itemsOf(chaptersOf(r)).find((it) => it.part === j);
+      if (landed) {
         jump.current = null;
-        setStep(j); setAnimate(true);
-        api.setProgress(id, j).then(onProgress, (e) => console.error('save progress failed', e));
+        setStep(landed.i); setAnimate(true);
+        api.setProgress(id, landed.i).then(onProgress, (e) => console.error('save progress failed', e));
       } else {
         if (r.pending?.status !== 'generating') jump.current = null;
         setStep(r.step); setAnimate(false);
@@ -54,9 +57,9 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
     });
   }, [id, load]);
 
-  const flat = rec ? flatten(rec) : [];
+  const chs = rec ? chaptersOf(rec) : [];
+  const flat = itemsOf(chs);
   const total = flat.length;
-  const parts = rec ? partsOf(rec) : [];
 
   const go = useCallback((n: number, anim: boolean) => {
     if (n < 0 || n >= total) return;
@@ -65,11 +68,12 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
     api.setProgress(id, n).then(onProgress, (e) => console.error('save progress failed', e));
   }, [id, total, onProgress]);
 
-  const follow = useCallback((q: string) => {
-    jump.current = total;
+  const parts = 1 + (rec?.more?.length ?? 0);
+  const follow = useCallback((q: string, chapter: number) => {
+    jump.current = parts;
     setStatus('正在讀你的追問…');
-    api.continueLesson(id, q, gen).then(load, (e) => { jump.current = null; setStatus(`沒辦法追問：${e}`); load(); });
-  }, [id, gen, total, load]);
+    api.continueLesson(id, q, gen, chapter).then(load, (e) => { jump.current = null; setStatus(`沒辦法追問：${e}`); load(); });
+  }, [id, gen, parts, load]);
 
   const next = useCallback(() => {
     if (widget.current?.busy()) widget.current.finish();
@@ -77,10 +81,10 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
   }, [go, step]);
   const prev = useCallback(() => go(step - 1, false), [go, step]);
   const cur = flat[Math.min(step, total - 1)];
-  const toChapter = useCallback((p: number) => {
-    const first = flat.findIndex((f) => f.part === p);
-    if (first >= 0) go(first, false);
-  }, [flat, go]);
+  const toChapter = useCallback((c: number) => {
+    const first = chs[c]?.items[0];
+    if (first) go(first.i, false);
+  }, [chs, go]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -88,12 +92,12 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
       if (t.closest('textarea, input, select, [contenteditable]')) return;
       if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); next(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
-      else if (cur && e.key === 'PageDown') { e.preventDefault(); toChapter(cur.part + 1); }
-      else if (cur && e.key === 'PageUp') { e.preventDefault(); toChapter(cur.local > 0 ? cur.part : cur.part - 1); }
+      else if (cur && e.key === 'PageDown') { e.preventDefault(); toChapter(cur.chapter + 1); }
+      else if (cur && e.key === 'PageUp') { e.preventDefault(); toChapter(chs[cur.chapter].items[0].i < cur.i ? cur.chapter : cur.chapter - 1); }
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [next, prev, toChapter, cur]);
+  }, [next, prev, toChapter, cur, chs]);
 
   if (loadError) return <main className="panel plain"><header className="bar" /><div className="empty">讀不到這一課：{loadError}</div></main>;
   if (!rec) return <main className="panel plain"><header className="bar" /></main>;
@@ -117,7 +121,7 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
           <div className="narr"><div className="narr-in">
             <Ask question={rec.question} />
             {d?.title && <h2 className="chap-t">{d.title}</h2>}
-            {!failed && <Drafting steps={d?.steps} />}
+            {!failed && <Drafting draft={d} />}
           </div></div>
           <div className="stage">
             {failed ? (
@@ -135,11 +139,13 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
 
   const L = rec.lesson;
   const short = L.title.split(/[：:]/)[0];
-  const part = parts[cur.part];
+  const ch = chs[cur.chapter];
   const pend = rec.pending;
   const writing = pend?.status === 'generating';
-  const lastPart = cur.part === parts.length - 1;
-  const chapterSteps = flat.filter((f) => f.part === cur.part);
+  const pendAt = Math.min(pend?.at ?? chs.length - 1, chs.length - 1);
+  const atEnd = ch.items[ch.items.length - 1].i <= step + 1;
+  const after = flat[step + 1];
+  const rename = (name: string) => api.renameChapter(id, cur.chapter, name).then(load, (e) => setStatus(`沒辦法改名：${e}`));
 
   return (
     <main className="panel">
@@ -148,48 +154,50 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
           {L.crumbs.filter((c) => c !== short).map((c) => <Fragment key={c}>{c}<Icon.chevron /></Fragment>)}
           <b>{short}</b>
         </div>
-        {parts.length > 1 && <ChapterMenu parts={parts} flat={flat} step={step} current={cur.part} onPick={toChapter} />}
+        {chs.length > 1 && <ChapterMenu chs={chs} step={step} current={cur.chapter} onPick={toChapter} />}
         <span className="sp" />
-        <Ticks flat={flat} step={step} go={(n) => go(n, n === step + 1)} />
+        <Ticks chs={chs} step={step} go={(n) => go(n, n === step + 1)} />
         <span className="count tnum">{step + 1} / {total}</span>
         <button className="ib" onClick={prev} disabled={step === 0} aria-label="上一步" title="上一步（←）"><Icon.left /></button>
-        {step < total - 1
-          ? <button className="primary" onClick={next}>{cur.part !== flat[step + 1].part ? '下一章' : '繼續'} <kbd>→</kbd></button>
-          : writing ? <span className="fin wait">正在接著寫</span>
+        {after
+          ? <button className="primary" onClick={next}>{after.chapter !== cur.chapter ? '下一章' : '繼續'} <kbd>→</kbd></button>
+          : writing ? <span className="fin wait">正在回答</span>
           : <span className="fin"><Icon.check />學完了</span>}
       </header>
       <div className="body">
         <div className="narr"><div className="narr-in">
-          {parts.slice(0, cur.part).map((p, i) => <Folded key={i} n={i} part={p} onClick={() => toChapter(i)} />)}
-          <Ask question={part.question} />
-          <h2 className="chap-t">{part.lesson.title}</h2>
-          {chapterSteps.map((f) => f.local <= cur.local + 1 && (
-            <p
-              key={f.i}
-              ref={f.i === step ? (el) => el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) : undefined}
-              className={`para ${f.i < step ? 'past' : f.i === step ? 'now' : 'next'}`}
-              onClick={() => f.i !== step && go(f.i, f.i === step + 1)}
-            >{rich(f.text)}</p>
+          {chs.slice(0, cur.chapter).map((c, n) => <Folded key={n} n={n} ch={c} onClick={() => toChapter(n)} />)}
+          <Ask question={ch.question} />
+          <Title key={cur.chapter} ch={ch} onRename={rename} />
+          {ch.items.map((it) => it.i <= step + 1 && (
+            <Fragment key={it.i}>
+              {it.asked && it.part > 0 && it.i !== ch.items[0].i && <Ask question={it.asked} />}
+              <p
+                ref={it.i === step ? (el) => el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) : undefined}
+                className={`para ${it.kind === 'text' ? 'reply ' : ''}${it.i < step ? 'past' : it.i === step ? 'now' : 'next'}`}
+                onClick={() => it.i !== step && go(it.i, it.i === step + 1)}
+              >{rich(it.text)}</p>
+            </Fragment>
           ))}
-          {parts.slice(cur.part + 1).map((p, i) => <Folded key={i} n={cur.part + 1 + i} part={p} onClick={() => toChapter(cur.part + 1 + i)} />)}
-          {pend && lastPart && step >= total - 2 && (
+          {pend && pendAt === cur.chapter && atEnd && (
             <div className="chap-pending">
               <Ask question={pend.question} />
-              {pend.draft?.title && <h2 className="chap-t">{pend.draft.title}</h2>}
+              {pend.draft?.mode === 'chapter' && pend.draft.title && <h2 className="chap-t">{pend.draft.title}</h2>}
               {writing
-                ? <Drafting steps={pend.draft?.steps} />
-                : <div className="perr"><span>{pend.error}</span><button className="btn" onClick={() => follow(pend.question)}><Icon.retry />再試一次</button></div>}
+                ? <Drafting draft={pend.draft} />
+                : <div className="perr"><span>{pend.error}</span><button className="btn" onClick={() => follow(pend.question, pendAt)}><Icon.retry />再試一次</button></div>}
             </div>
           )}
+          {chs.slice(cur.chapter + 1).map((c, n) => <Folded key={n} n={cur.chapter + 1 + n} ch={c} onClick={() => toChapter(cur.chapter + 1 + n)} />)}
         </div></div>
         <div className="stage">
-          <p className="task">{part.lesson.task}</p>
-          <div className="wbox"><WidgetFor key={cur.part} lesson={part.lesson} step={cur.local} animate={animate} widget={widget} /></div>
+          <p className="task">{ch.tasks[cur.version]}</p>
+          <div className="wbox"><WidgetFor key={`${cur.chapter}-${cur.version}`} widget={ch.versions[cur.version]} steps={ch.steps} step={cur.local} animate={animate} handle={widget} /></div>
         </div>
       </div>
       <Composer
-        busy={writing} status={status} suggestions={parts[parts.length - 1].lesson.suggestions}
-        onSubmit={follow} placeholder="追問這一課…" onStop={stop} foot={foot}
+        busy={writing} status={status} suggestions={lastSuggestions(rec)}
+        onSubmit={(q) => follow(q, cur.chapter)} placeholder={chs.length > 1 ? `追問第 ${cur.chapter + 1} 章…` : '追問這一課…'} onStop={stop} foot={foot}
       />
     </main>
   );
@@ -199,29 +207,55 @@ function Ask({ question }: { question: string }) {
   return <p className="asked">{question}</p>;
 }
 
-function Drafting({ steps }: { steps?: { text: string }[] }) {
+function Drafting({ draft }: { draft?: Draft }) {
   return (
     <>
-      {steps?.map((st, k) => <p key={k} className="para past">{rich(st.text)}</p>)}
+      {draft?.text && <p className="para reply past">{rich(draft.text)}</p>}
+      {draft?.steps?.map((st, k) => <p key={k} className="para past">{rich(st.text)}</p>)}
       <div className="skel"><i /><i style={{ width: '70%' }} /></div>
     </>
   );
 }
 
+/** The chapter title; the learner can rename it (Claude's title comes back when the name is cleared). */
+function Title({ ch, onRename }: { ch: Chapter; onRename: (name: string) => void }) {
+  const [edit, setEdit] = useState(false);
+  const [val, setVal] = useState(ch.title);
+  const save = () => { setEdit(false); if (val.trim() !== ch.title) onRename(val.trim() === ch.written ? '' : val); };
+  if (edit) {
+    return (
+      <input
+        className="chap-t chap-in" value={val} autoFocus placeholder={ch.written} aria-label="章節名稱"
+        onChange={(e) => setVal(e.target.value)} onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) save();
+          if (e.key === 'Escape') { setVal(ch.title); setEdit(false); }
+        }}
+      />
+    );
+  }
+  return (
+    <h2 className="chap-t" onDoubleClick={() => { setVal(ch.title); setEdit(true); }}>
+      {ch.title}
+      <button className="ren" onClick={() => { setVal(ch.title); setEdit(true); }} aria-label="重新命名這一章" title="重新命名"><Icon.pencil /></button>
+    </h2>
+  );
+}
+
 /** A chapter that is not being read: one row that jumps to it. */
-function Folded({ n, part, onClick }: { n: number; part: Part; onClick: () => void }) {
+function Folded({ n, ch, onClick }: { n: number; ch: Chapter; onClick: () => void }) {
   return (
     <button className="folded" onClick={onClick}>
       <span className="no tnum">{n + 1}</span>
-      <span className="ft">{part.lesson.title}</span>
-      <span className="fs tnum">{part.lesson.steps.length} 步</span>
+      <span className="ft">{ch.title}</span>
+      <span className="fs tnum">{ch.items.length} 段</span>
     </button>
   );
 }
 
 /** The chapter switcher in the top bar. */
-function ChapterMenu({ parts, flat, step, current, onPick }: {
-  parts: Part[]; flat: Flat[]; step: number; current: number; onPick: (p: number) => void;
+function ChapterMenu({ chs, step, current, onPick }: {
+  chs: Chapter[]; step: number; current: number; onPick: (c: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -236,37 +270,31 @@ function ChapterMenu({ parts, flat, step, current, onPick }: {
   return (
     <div className="chapters" ref={box}>
       <button className={`chap-btn${open ? ' on' : ''}`} onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu">
-        <span className="tnum">第 {current + 1} / {parts.length} 章</span><Icon.down />
+        <span className="tnum">第 {current + 1} / {chs.length} 章</span><Icon.down />
       </button>
       {open && (
         <div className="menu" role="menu">
-          {parts.map((p, i) => {
-            const mine = flat.filter((f) => f.part === i);
-            const read = mine.filter((f) => f.i <= step).length;
-            return (
-              <button key={i} role="menuitem" className={`mi${i === current ? ' on' : ''}`} onClick={() => { onPick(i); setOpen(false); }}>
-                <span className="no tnum">{i + 1}</span>
-                <span className="mt"><b>{p.lesson.title}</b><span>{p.question}</span></span>
-                <span className="ms tnum">{read} / {mine.length}</span>
-              </button>
-            );
-          })}
+          {chs.map((c, n) => (
+            <button key={n} role="menuitem" className={`mi${n === current ? ' on' : ''}`} onClick={() => { onPick(n); setOpen(false); }}>
+              <span className="no tnum">{n + 1}</span>
+              <span className="mt"><b>{c.title}</b><span>{c.question}</span></span>
+              <span className="ms tnum">{c.items.filter((it) => it.i <= step).length} / {c.items.length}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-/** Progress ticks, grouped by chapter; each one jumps to its step. */
-function Ticks({ flat, step, go }: { flat: Flat[]; step: number; go: (n: number) => void }) {
-  const groups: Flat[][] = [];
-  for (const f of flat) (groups[f.part] ??= []).push(f);
+/** Progress ticks, grouped by chapter; each one jumps to its item. */
+function Ticks({ chs, step, go }: { chs: Chapter[]; step: number; go: (n: number) => void }) {
   return (
     <div className="prog">
-      {groups.map((g, p) => (
-        <span key={p} className="pg">
-          {g.map((f) => (
-            <button key={f.i} className={f.i < step ? 'd' : f.i === step ? 'n' : ''} onClick={() => go(f.i)} aria-label={`第 ${f.i + 1} 步`} title={`第 ${f.i + 1} 步`} />
+      {chs.map((c, n) => (
+        <span key={n} className="pg">
+          {c.items.map((it) => (
+            <button key={it.i} className={`${it.i < step ? 'd' : it.i === step ? 'n' : ''}${it.kind === 'text' ? ' t' : ''}`} onClick={() => go(it.i)} aria-label={`第 ${it.i + 1} 段`} title={`第 ${it.i + 1} 段`} />
           ))}
         </span>
       ))}
@@ -302,25 +330,11 @@ function costOf(r: LessonRecord): Cost | undefined {
   }));
 }
 
-/** The lesson followed by each follow-up answered inside it. */
-function partsOf(r: LessonRecord): Part[] {
-  return r.lesson ? [{ question: r.question, lesson: r.lesson }, ...(r.more ?? [])] : [];
-}
-
-type Flat = { text: string; part: number; local: number; i: number };
-
-/** Every step of the lesson in order, with its chapter and its index inside that chapter. */
-function flatten(r: LessonRecord): Flat[] {
-  let i = 0;
-  return partsOf(r).flatMap((p, part) => p.lesson.steps.map((st, local) => ({ text: st.text, part, local, i: i++ })));
-}
-
-function WidgetFor({ lesson, step, animate, widget }: {
-  lesson: Lesson; step: number; animate: boolean; widget: React.RefObject<WidgetHandle | null>;
+function WidgetFor({ widget: w, steps, step, animate, handle }: {
+  widget: Widget; steps: Step[]; step: number; animate: boolean; handle: React.RefObject<WidgetHandle | null>;
 }) {
-  const w = lesson.widget;
-  if (w.kind === 'bubble-sort' && w.values?.length) return <BubbleSort ref={widget} values={w.values} steps={lesson.steps} step={step} animate={animate} />;
-  if (w.kind === 'plot' && w.plot) return <PlotWidget ref={widget} spec={w.plot} steps={lesson.steps} step={step} animate={animate} />;
-  if (w.kind === 'html' && w.html) return <HtmlWidget ref={widget} html={w.html} step={step} animate={animate} />;
+  if (w.kind === 'bubble-sort' && w.values?.length) return <BubbleSort ref={handle} values={w.values} steps={steps} step={step} animate={animate} />;
+  if (w.kind === 'plot' && w.plot) return <PlotWidget ref={handle} spec={w.plot} steps={steps} step={step} animate={animate} />;
+  if (w.kind === 'html' && w.html) return <HtmlWidget ref={handle} html={w.html} step={step} animate={animate} />;
   return <div className="empty">這一課的元件格式不對，沒辦法顯示。</div>;
 }
