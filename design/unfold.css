@@ -22,7 +22,6 @@
 
   --sans: "Onest", "Noto Sans TC", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
-  --hand: "LXGW WenKai TC", "Noto Sans TC", serif;
 
   --r-xl: 18px; --r-lg: 14px; --r-md: 10px; --r-sm: 7px;
   color-scheme: light;
@@ -206,4 +205,3 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .kw { color: var(--acc-ink); font-weight: 500; }
 
 /* handwriting annotation */
-.hand { font-family: var(--hand); }
