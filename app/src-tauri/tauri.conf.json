@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "bun run dev",
-    "beforeBuildCommand": "bun run build"
+    "beforeBuildCommand": "bun run build:agent && bun run build"
   },
   "app": {
     "windows": [
@@ -27,7 +27,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,8 +37,20 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
+    "externalBin": [
+      "binaries/unfold-agent"
+    ],
+    "shortDescription": "Unfold",
+    "longDescription": "Ask a question and get an interactive lesson, written by your own Claude Code.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "TradChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false
+      }
     }
   }
 }
