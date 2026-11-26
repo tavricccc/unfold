@@ -119,7 +119,7 @@
   /* diagram */
   .u-dg{position:relative;flex:1;min-height:0}
   .u-dg>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-  .u-node{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:9px;padding:9px 13px;max-width:190px;box-sizing:border-box;font-size:14px;line-height:1.35}
+  .u-node{position:absolute;transform:translate(-50%,-50%);width:max-content;display:flex;align-items:center;gap:9px;padding:9px 13px;max-width:190px;box-sizing:border-box;font-size:14px;line-height:1.35}
   .u-node.v{flex-direction:column;text-align:center;gap:5px;padding:11px 13px}
   .u-node b{font-weight:600;display:block}
   .u-node small{display:block;color:var(--fg-2);font-size:12px;margin-top:2px}
@@ -174,7 +174,12 @@
   .u-pt small{display:block;color:var(--fg-2);font-size:13px}
   .u-center{text-align:center;font-weight:600;font-size:15px}
   /* passage */
-  .u-ps{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:18px}
+  .u-ps{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:safe center;gap:18px;overflow-y:auto;scrollbar-width:none}
+  .u-ps.side{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);align-items:center;gap:24px}
+  .u-ps.side .src{grid-column:1}
+  .u-ps.side .u-notes{grid-column:2;grid-row:1 / span 2;align-self:center;min-height:0}
+  .u-ps.side .u-note{flex-direction:column;gap:4px}
+  .u-ps.side .u-note q{white-space:normal}
   .u-ps .txt{font-size:20px;line-height:2.1;letter-spacing:.02em;text-align:justify}
   .u-ps .txt.long{font-size:16px;line-height:1.95}
   .u-ps .src{font-size:12.5px;color:var(--fg-3);text-align:right}
@@ -441,8 +446,9 @@
     nodes.forEach((v) => (layers[rank[v.id]] = layers[rank[v.id]] || []).push(v.id));
     const L = layers.length, widest = Math.max(...layers.map((l) => l.length));
     if (layout === 'flow') {
-      // left to right; a chain too long for one row wraps onto the next, read like text
-      const per = Math.max(2, Math.min(L, Math.floor(Wa / 150) + 1));
+      // left to right; a plain chain too long for one row wraps onto the next, read like text
+      // (a graph with branches stays on one row, its cards narrower, so its layers stay apart)
+      const per = widest > 1 ? L : Math.max(2, Math.min(L, Math.floor(Wa / 150) + 1));
       const rows = Math.ceil(L / per);
       const colW = per === 1 ? Wa : Wa / (per - 1), bandH = Ha / rows;
       layers.forEach((ids, r) => ids.forEach((id, k) => {
@@ -496,7 +502,7 @@
       const n = evs.length, pad = Math.min(90, W / (n * 2));
       const nums = evs.map((e) => (typeof e.at === 'number' ? e.at : null));
       const even = (k) => (n === 1 ? 0.5 : k / (n - 1));
-      const cardW = Math.min(180, Math.max(104, ((W - 2 * pad) / Math.max(1, n - 1)) * 1.8));
+      const cardW = Math.min(176, Math.max(96, ((W - 2 * pad) / Math.max(1, n - 1)) * 2 - 16));
       let scaled = nums.every((v) => v != null) && n > 1 && nums[n - 1] > nums[0];
       // cards alternate above and below, so two apart on the same side must not overlap
       if (scaled) for (let k = 2; k < n; k++) if (((nums[k] - nums[k - 2]) / (nums[n - 1] - nums[0])) * (W - 2 * pad) < cardW + 8) scaled = false;
@@ -597,9 +603,10 @@
     const reg = {};
     const notes = {};
     (spec.notes || []).forEach((n) => (notes[n.id] = n.text));
-    const wrap = h('div', 'u-ps');
     const plain = String(spec.text || '').replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, '$2');
+    const wrap = h('div', `u-ps${plain.length > 120 && (spec.notes || []).length ? ' side' : ''}`);
     const txt = h('div', `txt${plain.length > 90 ? ' long' : ''}`);
+    if (plain.length > 240) txt.style.fontSize = '14.5px';
     const spans = {};
     txt.innerHTML = esc(spec.text || '').replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, (_, id, t) => `<span class="u-hl" data-id="${id.trim()}">${t}</span>`).replace(/\n/g, '<br>');
     txt.querySelectorAll('.u-hl').forEach((s) => { const id = s.dataset.id; spans[id] = s; put(reg, id, s); s.dataset.dim = 'no'; });

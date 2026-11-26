@@ -17,7 +17,8 @@ const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 fs.mkdirSync(path.join(run, 'shots'), { recursive: true });
 
 const frame = (w, steps, k) => {
-  const body = w.kind === 'html' ? w.html : `<script>U.mount(${js(w.kind)}, ${js(w[w.kind])}, ${js(steps.map((s) => ({ reveal: s.reveal, focus: s.focus })))})</script>`;
+  const isolate = (h) => h.replace(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi, (all, a = '', c) => (/\bsrc\s*=|type\s*=\s*["']?module/i.test(a) ? all : `<script${a}>{\n${c}\n}</script>`));
+  const body = w.kind === 'html' ? isolate(w.html) : `<script>U.mount(${js(w.kind)}, ${js(w[w.kind])}, ${js(steps.map((s) => ({ reveal: s.reveal, focus: s.focus })))})</script>`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>:root{${vars}} html,body{margin:0;height:100%;overflow:hidden;background:transparent;color:var(--fg);font-family:var(--sans);font-size:14px}</style><script>window.__UNFOLD_ICONS=${icons}</script><script>${rt}</script></head><body>${body}<script>setTimeout(()=>postMessage({type:'step',index:${k},animate:false},'*'),60)</script></body></html>`;
 };
 

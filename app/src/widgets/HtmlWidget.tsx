@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { KIT_HEAD } from '../kit/doc';
+import { isolate, KIT_HEAD } from '../kit/doc';
 import type { WidgetHandle, WidgetProps } from './types';
 
 const VARS = ['--fg', '--fg-2', '--fg-3', '--fg-4', '--line', '--line-2', '--sub', '--bg', '--raise', '--hover', '--acc', '--acc-soft', '--acc-ink', '--acc-fg', '--done', '--sans', '--mono'];
@@ -37,7 +37,7 @@ export const HtmlWidget = forwardRef<WidgetHandle, WidgetProps & { html: string;
   const doc = useMemo(() => `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:">
 <style>:root{${vars}} html,body{margin:0;height:100%;overflow:hidden;background:transparent;color:var(--fg);font-family:var(--sans);font-size:14px} body>*:not(script):not(style){max-width:100%}</style>
-${KIT_HEAD}</head><body>${html}</body></html>`, [html, vars]);
+${KIT_HEAD}</head><body>${isolate(html)}</body></html>`, [html, vars]);
 
   const errRef = useRef(onError);
   errRef.current = onError;

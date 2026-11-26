@@ -229,6 +229,7 @@ Kit visuals share one step mechanism: every element has an id; a step's "reveal"
      U.mount(kind, spec, steps, parentElement) draws a kit visual inside your own layout, with steps given as [{reveal, focus}, ...].
      Without the kit, listen for window.postMessage({ type: "step", index, animate }) yourself and render step 0 on load.
    - Mathematics and science should move: grow, slide, trace, rearrange, flow. Show changing numbers next to the picture.
+   - Write the state of each step as an explicit array, one entry per step (e.g. const S = [{a: 10, b: 20, note: '平衡'}, ...]), holding every number and label that step's text mentions, and draw from S[index]; animate by tweening between S[previous] and S[index]. Never derive a step's state from a continuous time function with thresholds: it puts boundary steps on the wrong side. Then check each step's text against its entry: the picture must show exactly what the text says.
    - Keep it under about 10 KB. Make sure every step index you write is handled.
 
 Icons (for nodes, points, events, columns and U.icon) are small line illustrations; use them to make a visual friendlier and easier to scan, one per element at most, only where they mean something. Available names: ${ICON_NAMES.join(', ')}.
