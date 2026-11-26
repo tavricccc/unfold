@@ -1,0 +1,73 @@
+:root {
+  --paper: #eef2f4; --paper-2: #e4eaed; --ink: #1f3038; --ink-2: #46575f; --ink-3: #66767e; --ink-4: #93a1a7;
+  --rule: #c5d0d5; --hair: #d8e0e4; --acc: #c4521b; --acc-ink: #9c3f12;
+  --disp: "Noto Sans TC", "GenYo Gothic TW", sans-serif;
+  --lat: "Instrument Sans", "Noto Sans TC", sans-serif;
+  --mono: "DM Mono", "GenYo Gothic TW", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: clip; background: var(--paper); }
+body { font-family: var(--disp); color: var(--ink); -webkit-font-smoothing: antialiased; }
+#film { position: relative; width: 1920px; height: 1080px; overflow: clip; background: var(--paper); }
+.abs { position: absolute; left: 0; top: 0; }
+.layer { position: absolute; inset: 0; }
+
+/* grid */
+.gl { position: absolute; top: 0; width: 1px; height: 1080px; background: var(--hair); transform-origin: top; }
+.gh { position: absolute; left: 0; height: 1px; width: 1920px; background: var(--hair); }
+
+/* chrome */
+.corner { position: absolute; width: 22px; height: 22px; border-color: var(--ink-3); border-style: solid; border-width: 0; }
+.mono { font-family: var(--mono); font-size: 15px; letter-spacing: .04em; color: var(--ink-2); white-space: nowrap; }
+.sq { display: inline-block; width: 10px; height: 10px; background: var(--acc); margin-right: 10px; vertical-align: 0; }
+.ticks { display: flex; gap: 4px; align-items: flex-end; }
+.ticks i { display: block; width: 3px; height: 14px; background: var(--rule); }
+.ticks i.on { background: var(--acc); }
+
+/* type */
+.num { font-family: var(--lat); font-weight: 600; letter-spacing: -.05em; line-height: .9; color: var(--ink); white-space: nowrap; }
+.disp { font-family: var(--disp); font-weight: 900; letter-spacing: -.03em; line-height: 1.12; color: var(--ink); white-space: nowrap; }
+.sub { font-family: var(--disp); font-weight: 500; font-size: 28px; line-height: 1.55; color: var(--ink-3); }
+.mask { overflow: clip; padding-bottom: .08em; }
+.mask > span { display: inline-block; }
+.hl { position: relative; display: inline-block; padding: 0 .1em; margin: 0 .02em; isolation: isolate;
+  color: color-mix(in srgb, #fff calc(var(--hl, 0) * 100%), var(--ink)); }
+.hl::before { content: ""; position: absolute; inset: .06em 0 .02em; background: var(--acc); z-index: -1;
+  transform: scaleX(var(--hl, 0)); transform-origin: left; }
+.rule { position: absolute; height: 2px; background: var(--ink); transform-origin: left; }
+.vrule { position: absolute; width: 2px; background: var(--ink); transform-origin: top; }
+
+/* the app window */
+.win { position: absolute; left: 0; top: 0; width: 1200px; height: 750px; transform-origin: 0 0; border-radius: 14px; overflow: clip;
+  background: #e4eaed; box-shadow: 0 0 0 1px rgb(16 32 40 / .10), 0 50px 120px -40px rgb(16 32 40 / .45), 0 18px 40px -20px rgb(16 32 40 / .25); }
+.win iframe { width: 1200px; height: 750px; border: 0; display: block; }
+.tile { position: absolute; left: 0; top: 0; width: 1200px; height: 750px; transform-origin: 0 0; border-radius: 16px; overflow: clip; background: #e4eaed;
+  box-shadow: 0 0 0 2px rgb(16 32 40 / .10), 0 40px 80px -40px rgb(16 32 40 / .4); }
+.tile iframe { width: 1200px; height: 750px; border: 0; display: block; pointer-events: none; }
+.wall { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 960px 540px; }
+
+/* caption card, over the app */
+.card { position: absolute; background: var(--paper); box-shadow: 0 0 0 1px var(--rule), 0 30px 60px -30px rgb(16 32 40 / .35); padding: 26px 34px 30px; border-radius: 4px; }
+.card .mono { margin-bottom: 10px; }
+
+/* orange wipe */
+.wipe { position: absolute; inset: 0; background: var(--acc); }
+
+/* cursor */
+.cursor { position: absolute; left: 0; top: 0; width: 34px; height: 40px; transform-origin: 0 0; filter: drop-shadow(0 3px 5px rgb(0 0 0 / .3)); z-index: 50; }
+.cring { position: absolute; left: -28px; top: -28px; width: 56px; height: 56px; border-radius: 50%; border: 3px solid var(--acc); z-index: 49; }
+
+/* the composer, as the closing frame */
+.pill { position: absolute; border-radius: 999px; padding: 2px; isolation: isolate; }
+.pill::before, .pill::after { content: ""; position: absolute; border-radius: inherit;
+  background: conic-gradient(from var(--ga, 0deg), #c4521b, #5fc2cc, #f0b44c, #e8795a, #c4521b); }
+.pill::before { inset: 0; z-index: -1; }
+.pill::after { inset: 8px 20px; z-index: -2; filter: blur(22px); opacity: .45; }
+.pill .in { display: flex; align-items: center; gap: 16px; height: 96px; border-radius: 999px; background: #fff; padding: 0 16px 0 44px; font-family: var(--disp); font-size: 30px; color: var(--ink-4); }
+.pill .in span { flex: 1; white-space: nowrap; overflow: hidden; }
+.pill .caret { display: inline-block; width: 2.5px; height: 36px; background: var(--ink); vertical-align: -6px; margin-right: 2px; }
+.pill .go { width: 66px; height: 66px; border-radius: 50%; background: var(--ink); display: grid; place-items: center; }
+
+/* only the app window takes the pointer; everything drawn over it lets clicks through */
+#film * { pointer-events: none; }
+#film .win, #film .win iframe { pointer-events: auto; }
