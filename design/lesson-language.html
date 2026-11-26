@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="light" data-accent="green">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unfold · 羅馬尼亞語</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=LXGW+WenKai+TC:wght@400;700&display=swap">
+<link rel="stylesheet" href="unfold.css">
+<style>
+.panes { display: grid; grid-template-columns: minmax(0,1fr) 360px; flex: 1; min-height: 0; overflow: hidden; }
+.card-w { display: flex; flex-direction: column; gap: 14px; padding: 18px 0 18px 20px; min-height: 0; }
+.word { position: relative; flex: 1; border-radius: var(--r-lg); background: var(--sub); padding: 34px 40px; display: flex; flex-direction: column; min-height: 0; }
+.word .no { font-size: 12.5px; color: var(--fg-3); display: flex; gap: 10px; align-items: center; }
+.word .no .sp { flex: 1; }
+.big { font-size: 64px; font-weight: 500; letter-spacing: -0.02em; margin-top: 96px; line-height: 1; position: relative; display: inline-block; align-self: flex-start; }
+.big .t { position: relative; }
+.ring { position: absolute; left: 50%; top: -6px; width: 46px; height: 92px; transform: translateX(-50%) rotate(-6deg); pointer-events: none; }
+.ring path { fill: none; stroke: var(--acc); stroke-width: 2.4; stroke-linecap: round; }
+.hand-note { position: absolute; left: 112px; top: -70px; font-family: "LXGW WenKai TC", serif; font-size: 22px; color: var(--acc-ink); white-space: nowrap; }
+.hand-note svg { position: absolute; left: -30px; top: 8px; }
+.hand-note svg path { fill: none; stroke: var(--acc); stroke-width: 2; stroke-linecap: round; }
+.ipa { margin-top: 14px; display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: 16px; }
+.ipa .syl b { color: var(--fg); font-weight: 600; }
+.ipa .dot { color: var(--fg-3); padding: 0 1px; }
+.play { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-2); background: var(--raise); color: var(--fg); }
+.gloss { font-size: 26px; font-weight: 500; margin-top: 26px; }
+.gloss small { font-size: 14px; color: var(--fg-3); font-weight: 400; margin-left: 10px; }
+.ex { margin-top: auto; border-top: 1px solid var(--line); padding-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.ex .k { font-size: 12px; color: var(--fg-3); margin-bottom: 6px; }
+.ex .ro { font-size: 16px; }
+.ex .ro u { text-decoration: none; box-shadow: inset 0 -0.45em 0 var(--acc-soft); }
+.ex .zh { font-size: 13.5px; color: var(--fg-2); margin-top: 3px; }
+.ex .nt { font-size: 13.5px; color: var(--fg-2); line-height: 1.6; }
+.deck { display: flex; gap: 6px; }
+.deck span { flex: 1 1 auto; white-space: nowrap; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; font-size: 13px; color: var(--fg-2); background: var(--bg); }
+.deck span i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); flex: none; }
+.deck span.ok i { background: var(--done); }
+.deck span.on { border-color: var(--fg); color: var(--fg); font-weight: 500; }
+.deck span.on i { background: var(--acc); }
+.prac { border-left: 1px solid var(--line); margin-left: 20px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.prac h3 { font-size: 12.5px; font-weight: 500; color: var(--fg-3); display: flex; justify-content: space-between; }
+.prac h3 b { font-weight: 500; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.pairs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 11px 13px; font-size: 14.5px; background: var(--raise); transition: border-color .15s, background-color .15s; }
+.tile:hover { border-color: var(--fg-3); }
+.tile.m { border-color: transparent; background: var(--sub); color: var(--fg-3); text-decoration: line-through; text-decoration-color: var(--line-2); }
+.tile.sel { border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-soft); }
+.tile.no { border-color: #d93a3a; animation: shake .3s; }
+@keyframes shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.fb { font-size: 13px; color: var(--fg-2); background: var(--sub); border-radius: var(--r-md); padding: 10px 12px; line-height: 1.55; }
+.fb b { color: var(--fg); }
+.streak { margin-top: auto; display: flex; gap: 4px; }
+.streak i { flex: 1; height: 4px; border-radius: 4px; background: var(--line); }
+.streak i.d { background: var(--done); }
+</style>
+</head>
+<body data-active="ro">
+<div class="app">
+  <aside class="side"></aside>
+  <main class="panel">
+    <header class="bar">
+      <div class="crumb">語言 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg>羅馬尼亞語 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg><b>五個日常單字</b></div>
+      <span class="sp"></span>
+      <div class="prog"><i class="d"></i><i class="n"></i><i></i><i></i><i></i><i></i></div>
+      <span class="pill tnum">2 / 6</span>
+      <span class="ib"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>
+    </header>
+    <div class="body">
+      <div class="lesson">
+        <div class="lhead"><div class="t">五個羅馬尼亞語單字</div><div class="q">你問：去布加勒斯特玩，最少要會哪幾個字？</div></div>
+        <div class="steps">
+          <div class="step d"><span class="n">1</span><p>羅馬尼亞語是拉丁語系，看起來像義大利文。大部分照拼字唸就對了。</p></div>
+          <div class="step now"><span class="n">2</span><p>「謝謝」是 mulțumesc。字母 ț 下面多一個小尾巴，<b>唸成 ts</b>，跟「此」的開頭很像。重音在最後一個音節。</p></div>
+          <div class="step later"><span class="n">3</span><p>ă 和 â 兩個母音</p></div>
+          <div class="step later"><span class="n">4</span><p>點餐用的兩個字：apă、pâine</p></div>
+        </div>
+        <div class="lfoot"><button class="btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m15 6-6 6 6 6"/></svg>上一步</button><button class="primary">下一步 <kbd>→</kbd></button></div>
+      </div>
+      <div class="stage">
+        <div class="task"><span class="tag">試試看</span>右邊把羅馬尼亞語和意思配起來，配錯不扣分。<span class="sp"></span><div class="seg"><span class="on">單字卡</span><span>只練習</span></div></div>
+        <div class="panes">
+          <div class="card-w">
+            <div class="word">
+              <div class="no"><span>2 / 5</span><span>動詞 · 第一人稱</span><span class="sp"></span><span class="ib" title="收藏"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 4h12v17l-6-4-6 4z"/></svg></span></div>
+              <div class="big"><span class="hand-note">唸 ts<svg width="30" height="40" viewBox="0 0 30 40"><path d="M27 4C18 8 10 20 6 35M6 35l-1-9M6 35l7-5"/></svg></span>mul<span class="t">ț<svg class="ring" viewBox="0 0 46 92" preserveAspectRatio="none"><path d="M26 4C10 3 3 22 4 46s9 42 21 42 18-20 17-44S34 3 18 7"/></svg></span>umesc</div>
+              <div class="ipa"><button class="play" aria-label="播放發音"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg></button><span class="syl">mul<span class="dot">·</span>tsu<span class="dot">·</span><b>MESK</b></span><span style="color:var(--fg-3)">/mul.t͡suˈmesk/</span></div>
+              <div class="gloss">謝謝<small>直譯：我感謝</small></div>
+              <div class="ex">
+                <div><div class="k">例句</div><div class="ro"><u>Mulțumesc</u> frumos!</div><div class="zh">非常感謝！（frumos：漂亮地）</div></div>
+                <div><div class="k">小提醒</div><div class="nt">口語常縮成 <b>mersi</b>，跟法文一樣。對長輩或店員用完整的 mulțumesc 比較有禮貌。</div></div>
+              </div>
+            </div>
+            <div class="deck"><span class="ok"><i></i>bună</span><span class="on"><i></i>mulțumesc</span><span><i></i>apă</span><span><i></i>pâine</span><span><i></i>noapte bună</span></div>
+          </div>
+          <div class="prac">
+            <h3>配對練習<b>2 / 5</b></h3>
+            <div class="pairs">
+              <div class="tile m">bună</div><div class="tile">麵包</div>
+              <div class="tile sel">mulțumesc</div><div class="tile m">你好</div>
+              <div class="tile">pâine</div><div class="tile no">晚安</div>
+              <div class="tile m">apă</div><div class="tile">謝謝</div>
+              <div class="tile">noapte bună</div><div class="tile m">水</div>
+            </div>
+            <div class="fb">mulțumesc 不是「晚安」。晚安是 <b>noapte bună</b>，noapte 就是夜晚。</div>
+            <div class="streak"><i class="d"></i><i class="d"></i><i></i><i></i><i></i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="composer" style="border-top:1px solid var(--line)">
+      <div class="sugg"><span class="sg">「請」要怎麼說？</span><span class="sg">ț 和 ţ 有差嗎？</span><span class="sg">再多五個字</span></div>
+      <div class="glow quiet"><div class="box"><span class="ph">追問這一課，或問一個新問題…</span>
+        <button class="send" aria-label="送出"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div></div>
+    </footer>
+  </main>
+</div>
+<script src="shell.js"></script>
+</body>
+</html>

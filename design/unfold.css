@@ -162,7 +162,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .sugg { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .sg { font-size: 12.5px; color: var(--fg-2); background: var(--sub); border-radius: 999px; padding: 4px 12px; transition: background-color .15s, color .15s; cursor: pointer; }
 .sg:hover { background: var(--hover); color: var(--fg); }
-.glow { position: relative; border-radius: var(--r-xl); isolation: isolate; }
+.glow { position: relative; border-radius: 999px; isolation: isolate; }
 .glow::before, .glow::after {
   content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
   background: conic-gradient(from var(--glow-a), var(--glow-1), var(--glow-2), var(--glow-3), var(--glow-4), var(--glow-1));
@@ -175,18 +175,17 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .glow::after { inset: 4px; filter: blur(16px); opacity: .22; z-index: -1; }
 .glow.live::before { opacity: 1; }
 .glow.live::after { opacity: .45; inset: 0; }
-.glow.quiet::before { opacity: 0; } .glow.quiet::after { opacity: 0; }
-.glow.quiet .box { border-color: var(--line-2); }
+.glow.quiet::before { opacity: .3; } .glow.quiet::after { opacity: .1; }
 @keyframes glow-spin { to { --glow-a: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .glow::before, .glow::after { animation: none; } }
 .box {
-  position: relative; display: flex; align-items: center; gap: 8px; border-radius: var(--r-xl);
-  background: var(--raise); border: 1px solid transparent; padding: 9px 9px 9px 18px; min-height: 52px;
+  position: relative; display: flex; align-items: center; gap: 8px; border-radius: 999px;
+  background: var(--raise); border: 1px solid transparent; padding: 8px 8px 8px 22px; min-height: 52px;
 }
 .box .ph { flex: 1; color: var(--fg-3); }
 .box .ph.typed { color: var(--fg); }
 .box .caret { display: inline-block; width: 1.5px; height: 1.1em; background: var(--fg); vertical-align: -2px; margin-left: 1px; }
-.send { width: 34px; height: 34px; border-radius: 11px; background: var(--fg); color: var(--bg); display: grid; place-items: center; transition: transform .12s; }
+.send { width: 36px; height: 36px; border-radius: 50%; background: var(--fg); color: var(--bg); display: grid; place-items: center; transition: transform .12s; }
 .send:active { transform: scale(.96); }
 .send.stop { background: var(--sub); color: var(--fg); }
 .status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg-2); margin: 0 4px 10px; }
