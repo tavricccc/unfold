@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import type { LessonMeta } from './lesson';
+import { TitleBar } from './components/TitleBar';
 import { genOf, useSettings } from './settings';
 import { Sidebar } from './components/Sidebar';
 import { Home } from './views/Home';
@@ -49,6 +50,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <TitleBar />
       <Sidebar lessons={lessons} view={view} go={setView} claude={claude} />
       {view.name === 'home' && <Home lessons={lessons} settings={settings} update={update} onAsk={(q) => ask(q)} open={(id) => setView({ name: 'lesson', id })} />}
       {view.name === 'lesson' && <LessonView key={view.id} id={view.id} gen={genOf(settings)} onAsk={ask} onProgress={refresh} />}
