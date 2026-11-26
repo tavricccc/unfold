@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import type { LessonMeta } from './lesson';
-import { useSettings } from './settings';
+import { genOf, useSettings } from './settings';
 import { Sidebar } from './components/Sidebar';
 import { Home } from './views/Home';
 import { LessonView } from './views/LessonView';
@@ -39,7 +39,7 @@ export default function App() {
 
   const ask = async (question: string) => {
     try {
-      const id = await api.startLesson(question, settings.model);
+      const id = await api.startLesson(question, genOf(settings));
       refresh();
       setView({ name: 'lesson', id });
     } catch (e) {
@@ -50,8 +50,8 @@ export default function App() {
   return (
     <div className="app">
       <Sidebar lessons={lessons} view={view} go={setView} claude={claude} />
-      {view.name === 'home' && <Home lessons={lessons} model={settings.model} onAsk={(q) => ask(q)} open={(id) => setView({ name: 'lesson', id })} />}
-      {view.name === 'lesson' && <LessonView key={view.id} id={view.id} model={settings.model} onAsk={ask} onProgress={refresh} />}
+      {view.name === 'home' && <Home lessons={lessons} gen={genOf(settings)} onAsk={(q) => ask(q)} open={(id) => setView({ name: 'lesson', id })} />}
+      {view.name === 'lesson' && <LessonView key={view.id} id={view.id} gen={genOf(settings)} onAsk={ask} onProgress={refresh} />}
       {view.name === 'settings' && <SettingsView settings={settings} update={update} claude={claude} />}
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}</div>}
     </div>

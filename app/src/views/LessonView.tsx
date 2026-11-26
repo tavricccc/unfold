@@ -7,9 +7,10 @@ import { BubbleSort } from '../widgets/BubbleSort';
 import { HtmlWidget } from '../widgets/HtmlWidget';
 import { PlotWidget } from '../widgets/Plot';
 import type { WidgetHandle } from '../widgets/types';
+import type { Gen } from '../settings';
 
-export function LessonView({ id, model, onAsk, onProgress }: {
-  id: string; model?: string; onAsk: (q: string) => void; onProgress: () => void;
+export function LessonView({ id, gen, onAsk, onProgress }: {
+  id: string; gen?: Gen; onAsk: (q: string) => void; onProgress: () => void;
 }) {
   const [rec, setRec] = useState<LessonRecord | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -61,8 +62,8 @@ export function LessonView({ id, model, onAsk, onProgress }: {
   const follow = useCallback((q: string) => {
     jump.current = total;
     setStatus('正在讀你的追問…');
-    api.continueLesson(id, q, model).then(load, (e) => { jump.current = null; setStatus(`沒辦法追問：${e}`); load(); });
-  }, [id, model, total, load]);
+    api.continueLesson(id, q, gen).then(load, (e) => { jump.current = null; setStatus(`沒辦法追問：${e}`); load(); });
+  }, [id, gen?.model, gen?.effort, total, load]);
 
   const next = useCallback(() => {
     if (widget.current?.busy()) widget.current.finish();

@@ -1,6 +1,7 @@
 // Backend access. Inside Tauri this calls the Rust commands; in a plain browser (design review,
 // screenshots) it falls back to an in-memory store seeded with recorded lessons.
 import type { LessonEvent, LessonMeta, LessonRecord } from './lesson';
+import type { Gen } from './settings';
 import bubble from '../fixtures/bubble.json';
 import deriv from '../fixtures/deriv.json';
 import pyth from '../fixtures/pyth.json';
@@ -11,8 +12,8 @@ export interface Api {
   listLessons(): Promise<LessonMeta[]>;
   getLesson(id: string): Promise<LessonRecord>;
   setProgress(id: string, step: number): Promise<void>;
-  startLesson(question: string, model?: string): Promise<string>;
-  continueLesson(id: string, question: string, model?: string): Promise<void>;
+  startLesson(question: string, gen?: Gen): Promise<string>;
+  continueLesson(id: string, question: string, gen?: Gen): Promise<void>;
   cancelLesson(id: string): Promise<void>;
   claudeStatus(): Promise<string>;
   onLessonEvent(cb: (e: LessonEvent) => void): () => void;
@@ -26,8 +27,8 @@ function tauriApi(): Api {
     listLessons: () => call('list_lessons'),
     getLesson: (id) => call('get_lesson', { id }),
     setProgress: (id, step) => call('set_progress', { id, step }),
-    startLesson: (question, model) => call('start_lesson', { question, model }),
-    continueLesson: (id, question, model) => call('continue_lesson', { id, question, model }),
+    startLesson: (question, gen) => call('start_lesson', { question, model: gen?.model, effort: gen?.effort }),
+    continueLesson: (id, question, gen) => call('continue_lesson', { id, question, model: gen?.model, effort: gen?.effort }),
     cancelLesson: (id) => call('cancel_lesson', { id }),
     claudeStatus: () => call('claude_status'),
     onLessonEvent(cb) {

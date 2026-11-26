@@ -1,6 +1,6 @@
 // Unfold sidecar: turns one question into a lesson script through the Claude Agent SDK.
 // Protocol: one JSON request on stdin, NDJSON events on stdout.
-//   in:  { "question": string, "model"?: string }
+//   in:  { "question": string, "model"?: string, "effort"?: "low" | "medium" | "high" | "xhigh" | "max" }
 //   out: { "type": "status", "text": string }
 //        { "type": "partial", "lesson": Partial<Lesson> }   title/steps so far, no widget
 //        { "type": "lesson", "lesson": Lesson, "model": string }
@@ -9,6 +9,8 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { parsePartial } from './partial.ts';
 import { LESSON_SCHEMA, SYSTEM_PROMPT } from './prompt.ts';
+
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 const emit = (o: unknown) => process.stdout.write(JSON.stringify(o) + '\n');
 
@@ -21,11 +23,13 @@ async function readStdin(): Promise<string> {
 type Draft = { title?: string; steps?: { text: string }[]; widget?: { kind?: string } };
 
 async function main() {
-  const req = JSON.parse(await readStdin()) as { question: string; model?: string };
+  const req = JSON.parse(await readStdin()) as { question: string; model?: string; effort?: string };
   if (!req.question?.trim()) throw new Error('empty question');
 
   emit({ type: 'status', text: '正在讀你的問題…' });
   let model = req.model ?? 'sonnet';
+  // Left out, the model runs at its own default; a level the model lacks is lowered by Claude Code.
+  const effort = EFFORTS.find((e) => e === req.effort);
   let json = '';
   let sent = '';
   let phase = '';
@@ -36,6 +40,7 @@ async function main() {
     options: {
       systemPrompt: SYSTEM_PROMPT,
       model,
+      ...(effort ? { effort } : {}),
       tools: [],
       settingSources: [],
       maxTurns: 4,

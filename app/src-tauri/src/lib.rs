@@ -178,7 +178,7 @@ fn more_steps(rec: &Value) -> usize {
 }
 
 #[tauri::command]
-fn start_lesson(app: AppHandle, question: String, model: Option<String>) -> Result<String, String> {
+fn start_lesson(app: AppHandle, question: String, model: Option<String>, effort: Option<String>) -> Result<String, String> {
   let question = question.trim().to_string();
   if question.is_empty() {
     return Err("問題是空的".into());
@@ -186,13 +186,13 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>) -> Resu
   let id = format!("{:x}", now_ms());
   let rec = json!({ "id": id, "question": question, "status": "generating", "createdAt": now_ms() as u64, "step": 0 });
   write_record(&app, &id, &rec)?;
-  spawn_job(app.clone(), id.clone(), question, model, false);
+  spawn_job(app.clone(), id.clone(), question, model, effort, false);
   Ok(id)
 }
 
 /// Asks a follow-up inside an existing lesson: the answer is appended as more steps of the same lesson.
 #[tauri::command]
-fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, question: String, model: Option<String>) -> Result<(), String> {
+fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, question: String, model: Option<String>, effort: Option<String>) -> Result<(), String> {
   let question = question.trim().to_string();
   if question.is_empty() {
     return Err("問題是空的".into());
@@ -229,14 +229,14 @@ fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, questio
   );
   rec["pending"] = json!({ "question": question, "status": "generating" });
   write_record(&app, &id, &rec)?;
-  spawn_job(app.clone(), id, prompt, model, true);
+  spawn_job(app.clone(), id, prompt, model, effort, true);
   Ok(())
 }
 
 /// Runs the sidecar for one lesson. `more` routes the result into the lesson's pending follow-up
 /// instead of the lesson itself.
-fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>, more: bool) {
-  let req = json!({ "question": prompt, "model": model });
+fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>, effort: Option<String>, more: bool) {
+  let req = json!({ "question": prompt, "model": model, "effort": effort });
   std::thread::spawn(move || {
     let fail = |msg: String| {
       log::error!("lesson {id2} failed: {msg}");
