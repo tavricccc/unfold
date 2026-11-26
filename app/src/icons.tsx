@@ -1,11 +1,24 @@
 import type { ReactNode } from 'react';
 import type { Subject } from './lesson';
+import { ICONS } from './kit/icons';
 
 const S = ({ children, w = 1.6, size = 16 }: { children: ReactNode; w?: number; size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
 
+/** A kit icon (Lucide) at the sidebar's line weight. */
+const K = (name: string) => () => (
+  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML={{ __html: ICONS[name] }} />
+);
+
 export const Icon = {
+  chemistry: K('flask-conical'),
+  biology: K('dna'),
+  earth: K('earth'),
+  history: K('scroll-text'),
+  geography: K('map'),
+  civics: K('landmark'),
+  x: () => <S w={1.9} size={13}><path d="M6 6l12 12M18 6 6 18" /></S>,
   algorithm: () => <S><path d="M5 20V11M10 20V5M15 20v-7M20 20v-4" /></S>,
   math: () => <S><path d="M4 20h16L4 6z" /><path d="M4 16h4v4" /></S>,
   physics: () => <S><path d="M3 19c4-12 14-12 18 0" /><circle cx="16.5" cy="10.5" r="1.6" fill="currentColor" /></S>,
@@ -26,7 +39,7 @@ export const Icon = {
   check: () => <S w={2.6} size={14}><path d="m5 12 5 5 9-10" /></S>,
 };
 
-export const subjectIcon = (s?: Subject) => (Icon[s ?? 'other'] ?? Icon.other)();
+export const subjectIcon = (s?: Subject) => ((Icon as Record<string, () => ReactNode>)[s ?? 'other'] ?? Icon.other)();
 
 export const Mark = () => (
   <span className="mark">

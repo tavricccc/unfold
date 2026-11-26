@@ -441,3 +441,11 @@ h2.chap-t:hover .ren, .ren:focus-visible { opacity: 1; }
 .me { display: flex; align-items: center; gap: 12px; }
 .me img { border-radius: 50%; box-shadow: 0 0 0 1px var(--line); background: var(--sub); }
 .me b { font-weight: 500; flex: 1; }
+
+/* a visual that reported an error */
+.wbox { position: relative; }
+.werr {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  padding: 6px 6px 6px 14px; border-radius: var(--r-md); background: var(--raise); font-size: 13px; color: var(--fg-2);
+  box-shadow: 0 0 0 1px var(--line), 0 10px 28px -12px rgb(16 32 40 / .3); animation: menu-in .16s var(--ease);
+}

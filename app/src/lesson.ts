@@ -1,6 +1,7 @@
 // Lesson script as written by the sidecar (see sidecar/prompt.ts for the schema Claude follows).
 
-export type Subject = 'algorithm' | 'math' | 'physics' | 'language' | 'art' | 'other';
+export const SUBJECTS = ['math', 'physics', 'chemistry', 'biology', 'earth', 'history', 'geography', 'civics', 'language', 'algorithm', 'art', 'other'] as const;
+export type Subject = typeof SUBJECTS[number];
 
 export interface Step {
   text: string;
@@ -8,7 +9,48 @@ export interface Step {
   pass?: number;
   /** plot: parameter values to animate to when this step is shown */
   set?: { name: string; value: number }[];
+  /** kit visuals: ids that appear at this step and stay */
+  reveal?: string[];
+  /** kit visuals: ids emphasised while this step is shown */
+  focus?: string[];
 }
+
+/** The declarative visuals the kit draws (src/kit/runtime.js); their ids are what steps reveal and focus. */
+export interface ChartSpec {
+  type: 'bar' | 'stacked' | 'line' | 'pie';
+  title?: string; unit?: string; yMin?: number; yMax?: number;
+  labels: string[];
+  series: { id: string; name?: string; values: number[] }[];
+  marks?: { id: string; label: string; series?: string; text: string }[];
+}
+export interface DiagramSpec {
+  layout: 'flow' | 'down' | 'tree' | 'cycle' | 'hub' | 'free';
+  title?: string;
+  nodes: { id: string; label: string; text?: string; icon?: string; x?: number; y?: number }[];
+  edges: { id?: string; from: string; to: string; label?: string; dashed?: boolean; both?: boolean }[];
+}
+export interface TimelineSpec {
+  title?: string;
+  events: { id: string; when: string; at?: number; title: string; text?: string; icon?: string }[];
+  spans?: { id: string; from: string; to: string; label?: string }[];
+}
+export interface CompareSpec {
+  title?: string;
+  columns: { id: string; title: string; icon?: string }[];
+  rows: { id: string; label: string; cells: string[] }[];
+}
+export interface PointsSpec {
+  title?: string; center?: string;
+  items: { id: string; title: string; text?: string; icon?: string }[];
+}
+export interface PassageSpec {
+  /** the text, with [[id|words]] around each part a step can point at */
+  text: string;
+  source?: string;
+  notes?: { id: string; text: string }[];
+}
+export const KIT_KINDS = ['chart', 'diagram', 'timeline', 'compare', 'points', 'passage'] as const;
+export type KitKind = typeof KIT_KINDS[number];
 
 export type Expr = string | number;
 
@@ -43,10 +85,16 @@ export interface PlotSpec {
 }
 
 export interface Widget {
-  kind: 'bubble-sort' | 'plot' | 'html';
+  kind: 'bubble-sort' | 'plot' | 'html' | KitKind;
   values?: number[];
   plot?: PlotSpec;
   html?: string;
+  chart?: ChartSpec;
+  diagram?: DiagramSpec;
+  timeline?: TimelineSpec;
+  compare?: CompareSpec;
+  points?: PointsSpec;
+  passage?: PassageSpec;
 }
 
 export interface Lesson {

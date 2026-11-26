@@ -3,7 +3,8 @@ import { api } from '../api';
 import { Composer } from '../components/Composer';
 import { Icon, rich } from '../icons';
 import { chaptersOf, itemsOf, lastSuggestions, type Chapter } from '../chapters';
-import type { Cost, Draft, LessonRecord, Step, Widget } from '../lesson';
+import { KIT_KINDS, type Cost, type Draft, type KitKind, type LessonRecord, type Step, type Widget } from '../lesson';
+import { kitBody } from '../kit/doc';
 import { EFFORT_LABEL, MODEL_LABEL, type Gen } from '../settings';
 import { BubbleSort } from '../widgets/BubbleSort';
 import { HtmlWidget } from '../widgets/HtmlWidget';
@@ -219,7 +220,12 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
         </div></div>
         <div className="stage">
           <p className="task">{ch.tasks[cur.version]}</p>
-          <div className="wbox"><WidgetFor key={`${cur.chapter}-${cur.version}`} widget={ch.versions[cur.version]} steps={ch.steps} step={cur.local} animate={animate} handle={widget} /></div>
+          <div className="wbox">
+            <WidgetFor
+              key={`${cur.chapter}-${cur.version}`} widget={ch.versions[cur.version]} steps={ch.steps} step={cur.local} animate={animate} handle={widget}
+              onFix={writing ? undefined : (msg) => follow(`（視覺出錯，請修好它並保持原本的內容）錯誤訊息：${msg}`, cur.chapter)}
+            />
+          </div>
         </div>
       </div>
       <Composer
@@ -357,11 +363,30 @@ function costOf(r: LessonRecord): Cost | undefined {
   }));
 }
 
-function WidgetFor({ widget: w, steps, step, animate, handle }: {
-  widget: Widget; steps: Step[]; step: number; animate: boolean; handle: React.RefObject<WidgetHandle | null>;
+function WidgetFor({ widget: w, steps, step, animate, handle, onFix }: {
+  widget: Widget; steps: Step[]; step: number; animate: boolean; handle: React.RefObject<WidgetHandle | null>; onFix?: (message: string) => void;
 }) {
-  if (w.kind === 'bubble-sort' && w.values?.length) return <BubbleSort ref={handle} values={w.values} steps={steps} step={step} animate={animate} />;
-  if (w.kind === 'plot' && w.plot) return <PlotWidget ref={handle} spec={w.plot} steps={steps} step={step} animate={animate} />;
-  if (w.kind === 'html' && w.html) return <HtmlWidget ref={handle} html={w.html} step={step} animate={animate} />;
-  return <div className="empty">這一課的元件格式不對，沒辦法顯示。</div>;
+  const [err, setErr] = useState('');
+  const body = (() => {
+    if (w.kind === 'bubble-sort' && w.values?.length) return <BubbleSort ref={handle} values={w.values} steps={steps} step={step} animate={animate} />;
+    if (w.kind === 'plot' && w.plot) return <PlotWidget ref={handle} spec={w.plot} steps={steps} step={step} animate={animate} />;
+    if (w.kind === 'html' && w.html) return <HtmlWidget ref={handle} html={w.html} step={step} animate={animate} onError={(m) => setErr((e) => e || m)} />;
+    if ((KIT_KINDS as readonly string[]).includes(w.kind) && w[w.kind as KitKind]) {
+      return <HtmlWidget ref={handle} html={kitBody(w, steps)} step={step} animate={animate} onError={(m) => setErr((e) => e || m)} />;
+    }
+    return null;
+  })();
+  if (!body) return <div className="empty">這一課的元件格式不對，沒辦法顯示。</div>;
+  return (
+    <>
+      {body}
+      {err && (
+        <div className="werr" role="status">
+          <span>這個視覺出了點問題</span>
+          {onFix && <button className="go" onClick={() => { onFix(err); setErr(''); }}>請 Claude 修好<Icon.right /></button>}
+          <button className="ib" onClick={() => setErr('')} aria-label="關閉"><Icon.x /></button>
+        </div>
+      )}
+    </>
+  );
 }
