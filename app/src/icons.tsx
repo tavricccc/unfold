@@ -27,7 +27,12 @@ export const Icon = {
 export const subjectIcon = (s?: Subject) => (Icon[s ?? 'other'] ?? Icon.other)();
 
 export const Mark = () => (
-  <span className="mark"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7l8 5 8-5M4 13l8 5 8-5" /></svg></span>
+  <span className="mark">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 6.5 12 11l7-4.5" stroke="var(--mark-accent)" strokeWidth="2.6" />
+      <path d="M5 13 12 17.5l7-4.5" stroke="#fff" strokeWidth="2.6" />
+    </svg>
+  </span>
 );
 
 /** Renders **bold** markers from lesson text. */
