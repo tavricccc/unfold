@@ -188,7 +188,7 @@ export function LessonView({ id, gen, onAsk, onProgress }: {
         <span className="count tnum">{step + 1} / {total}</span>
         <button className="ib" onClick={prev} disabled={step === 0} aria-label="上一步" title="上一步（←）"><Icon.left /></button>
         {after
-          ? <button className="primary" onClick={next}>{after.chapter !== cur.chapter ? '下一章' : '繼續'} <kbd>→</kbd></button>
+          ? <button className="go" onClick={next} title="繼續（→）">{after.chapter !== cur.chapter ? '下一章' : '繼續'}<Icon.right /></button>
           : writing ? <span className="fin wait">正在回答</span>
           : <span className="fin"><Icon.check />學完了</span>}
       </header>

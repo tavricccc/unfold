@@ -19,6 +19,7 @@ export interface Api {
   renameChapter(id: string, chapter: number, name: string): Promise<void>;
   cancelLesson(id: string): Promise<void>;
   claudeStatus(): Promise<string>;
+  openLink(url: string): Promise<void>;
   onLessonEvent(cb: (e: LessonEvent) => void): () => void;
 }
 
@@ -35,6 +36,7 @@ function tauriApi(): Api {
     renameChapter: (id, chapter, name) => call('rename_chapter', { id, chapter, name }),
     cancelLesson: (id) => call('cancel_lesson', { id }),
     claudeStatus: () => call('claude_status'),
+    openLink: (url) => call('open_link', { url }),
     onLessonEvent(cb) {
       let off: (() => void) | undefined;
       let dead = false;
@@ -141,6 +143,7 @@ function mockApi(): Api {
       emit({ id, type: 'error', message: '你停止了這次生成' });
     },
     async claudeStatus() { return 'preview'; },
+    async openLink(url) { open(url, '_blank', 'noopener'); },
     onLessonEvent(cb) {
       const h = (e: Event) => cb((e as CustomEvent<LessonEvent>).detail);
       bus.addEventListener('e', h);

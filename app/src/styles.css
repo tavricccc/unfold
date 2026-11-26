@@ -428,3 +428,16 @@ h2.chap-t:hover .ren, .ren:focus-visible { opacity: 1; }
 .po:hover { background: var(--sub); color: var(--fg); }
 .po.on { color: var(--fg); font-weight: 500; }
 .po.on svg { color: var(--acc); }
+
+/* a text action with its arrow, no fill: the lesson's 繼續 and the settings page's 前往 */
+.go { display: inline-flex; align-items: center; gap: 5px; padding: 6px 4px 6px 8px; font-weight: 600; color: var(--acc-ink); border-radius: var(--r-sm); transition: color .15s; }
+.go svg { transition: transform .18s var(--ease); }
+.go:hover { color: var(--acc); }
+.go:hover svg { transform: translateX(2px); }
+.go:hover svg:has(path[d^="M7 17"]) { transform: translate(2px, -2px); }
+.go:active svg { transform: none; }
+
+/* the author, on the settings page */
+.me { display: flex; align-items: center; gap: 12px; }
+.me img { border-radius: 50%; box-shadow: 0 0 0 1px var(--line); background: var(--sub); }
+.me b { font-weight: 500; flex: 1; }

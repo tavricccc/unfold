@@ -1,4 +1,7 @@
+import { api } from '../api';
 import { Icon } from '../icons';
+
+const GITHUB = 'tavricccc';
 import { EFFORTS, EFFORT_LABEL, MODEL_LABEL, type Accent, type Model, type Settings, type Theme } from '../settings';
 
 const THEMES: [Theme, string][] = [['light', '淺色'], ['dark', '深色'], ['system', '跟隨系統']];
@@ -49,6 +52,18 @@ export function SettingsView({ settings, update, claude }: {
             <div className="row">
               <div className="k">思考深度</div>
               <div className="v"><div className="seg">{EFFORTS.map((e) => <button key={e} className={settings.effort === e ? 'on' : ''} onClick={() => update({ effort: e })} aria-pressed={settings.effort === e}>{EFFORT_LABEL[e]}</button>)}</div></div>
+            </div>
+          </div>
+        </section>
+        <section className="sec">
+          <h2>作者</h2>
+          <div className="card">
+            <div className="row one">
+              <div className="me">
+                <img src={`https://github.com/${GITHUB}.png?size=96`} alt="" width={36} height={36} />
+                <b>{GITHUB}</b>
+                <button className="go" onClick={() => api.openLink(`https://github.com/${GITHUB}`).catch((e) => console.error('open link failed', e))}>前往<Icon.out /></button>
+              </div>
             </div>
           </div>
         </section>

@@ -13,6 +13,21 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Opens a GitHub page in the default browser; nothing else may be opened this way.
+#[tauri::command]
+fn open_link(url: String) -> Result<(), String> {
+  if !url.starts_with("https://github.com/") || url.chars().any(|c| !(c.is_ascii_alphanumeric() || "/:.-_".contains(c))) {
+    return Err(format!("not an allowed link: {url}"));
+  }
+  #[cfg(windows)]
+  let r = Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).creation_flags(CREATE_NO_WINDOW).spawn();
+  #[cfg(target_os = "macos")]
+  let r = Command::new("open").arg(&url).spawn();
+  #[cfg(all(unix, not(target_os = "macos")))]
+  let r = Command::new("xdg-open").arg(&url).spawn();
+  r.map(|_| ()).map_err(|e| format!("could not open the browser: {e}"))
+}
+
 fn now_ms() -> u128 {
   SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
@@ -409,7 +424,7 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![list_lessons, get_lesson, set_progress, rename_chapter, delete_lesson, claude_status, start_lesson, continue_lesson, cancel_lesson])
+    .invoke_handler(tauri::generate_handler![open_link, list_lessons, get_lesson, set_progress, rename_chapter, delete_lesson, claude_status, start_lesson, continue_lesson, cancel_lesson])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
 }
