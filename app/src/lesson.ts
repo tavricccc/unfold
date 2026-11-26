@@ -61,11 +61,21 @@ export interface Lesson {
 
 export type Status = 'generating' | 'ready' | 'error';
 
+/** What one generation cost, as Claude Code reports it (API prices, also on a subscription). */
+export interface Cost {
+  usd: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
 /** A follow-up answered inside a lesson: more steps appended after the lesson's own. */
 export interface Part {
   question: string;
   lesson: Lesson;
   model?: string;
+  cost?: Cost;
 }
 
 /** A follow-up still being written, or one that failed. */
@@ -87,6 +97,7 @@ export interface LessonRecord {
   /** title and steps written so far while generating */
   draft?: Partial<Lesson>;
   model?: string;
+  cost?: Cost;
   error?: string;
   more?: Part[];
   pending?: Pending;

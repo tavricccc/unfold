@@ -40,6 +40,9 @@ function tauriApi(): Api {
   };
 }
 
+/** Browser preview only: a made-up cost so the cost line has something to show. */
+const PREVIEW_COST = { usd: 0.0214, input: 3, output: 2870, cacheRead: 11200, cacheWrite: 4100 };
+
 function mockApi(): Api {
   const fixtures = [bubble, pyth, deriv] as { lesson: NonNullable<LessonRecord['lesson']>; model: string }[];
   const questions = ['泡泡排序是怎麼運作的？', '畢氏定理為什麼成立？', '導數到底在算什麼？'];
@@ -48,7 +51,7 @@ function mockApi(): Api {
   const store = new Map<string, LessonRecord>();
   fixtures.forEach((f, i) => {
     const id = `demo${i}`;
-    store.set(id, { id, question: questions[i], status: 'ready', createdAt: now - (i + 1) * 3600e3, step: 0, lesson: f.lesson, model: f.model });
+    store.set(id, { id, question: questions[i], status: 'ready', createdAt: now - (i + 1) * 3600e3, step: 0, lesson: f.lesson, model: f.model, cost: PREVIEW_COST });
   });
   const bus = new EventTarget();
   const emit = (e: LessonEvent) => bus.dispatchEvent(new CustomEvent('e', { detail: e }));
@@ -79,7 +82,7 @@ function mockApi(): Api {
       }, 700 + i * 350)));
       t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在畫給你看…' }), 800 + draft.steps.length * 350));
       t.push(window.setTimeout(() => {
-        Object.assign(store.get(id)!, { status: 'ready', lesson: f.lesson, model: f.model, draft: undefined });
+        Object.assign(store.get(id)!, { status: 'ready', lesson: f.lesson, model: f.model, draft: undefined, cost: PREVIEW_COST });
         timers.delete(id);
         emit({ id, type: 'ready' });
       }, 3200 + draft.steps.length * 350));
@@ -100,7 +103,7 @@ function mockApi(): Api {
         emit({ id, type: 'partial', lesson: r.pending!.draft, more: true });
       }, 600 + i * 300)));
       t.push(window.setTimeout(() => {
-        r.more = [...(r.more ?? []), { question, lesson: f.lesson, model: f.model }];
+        r.more = [...(r.more ?? []), { question, lesson: f.lesson, model: f.model, cost: PREVIEW_COST }];
         r.pending = undefined;
         timers.delete(id);
         emit({ id, type: 'ready' });

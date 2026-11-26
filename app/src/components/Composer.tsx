@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../icons';
 
 /** The pill-shaped question box with the travelling glow. */
-export function Composer({ onSubmit, onStop, placeholder, busy, status, big, autoFocus, suggestions }: {
+export function Composer({ onSubmit, onStop, placeholder, busy, status, big, autoFocus, suggestions, foot }: {
   onSubmit: (q: string) => void;
   onStop?: () => void;
   placeholder: string;
@@ -11,6 +11,8 @@ export function Composer({ onSubmit, onStop, placeholder, busy, status, big, aut
   big?: boolean;
   autoFocus?: boolean;
   suggestions?: string[];
+  /** the line under the box: model, cost, hints */
+  foot?: ReactNode;
 }) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -52,6 +54,7 @@ export function Composer({ onSubmit, onStop, placeholder, busy, status, big, aut
             : <button className="send" aria-label="送出" disabled={busy || !text.trim()} onClick={() => send()}><Icon.send /></button>}
         </div>
       </div>
+      {foot && <div className="under">{foot}</div>}
     </div>
   );
 }

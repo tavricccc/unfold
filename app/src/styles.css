@@ -26,7 +26,7 @@
 
   --r-xl: 20px; --r-lg: 14px; --r-md: 10px; --r-sm: 8px;
   --ease: cubic-bezier(.2, .7, .2, 1);
-  --col: 340px;        /* the step column */
+  --col: 380px;        /* the step column */
   color-scheme: light;
 }
 [data-accent="orange"] { --acc: #c4521b; --acc-soft: #f8e6dc; --acc-ink: #9c3f12; }
@@ -118,11 +118,36 @@ button:disabled { cursor: default; opacity: .4; }
 .crumb svg { color: var(--fg-4); }
 .crumb b { color: var(--fg); font-weight: 500; }
 .bar .sp { flex: 1; }
-.prog { display: flex; gap: 3px; }
-.prog i { width: 14px; height: 4px; border-radius: 2px; background: var(--line-2); transition: width .3s var(--ease), background-color .3s; }
-.prog i.d { background: var(--fg-3); }
-.prog i.n { background: var(--acc); width: 24px; }
-.pill { font-size: 12.5px; color: var(--fg-2); padding: 2px 4px; }
+.prog { display: flex; gap: 8px; align-items: center; }
+.prog .pg { display: flex; gap: 2px; }
+.prog button { width: 12px; height: 14px; padding: 5px 0; background-clip: content-box; border-radius: 2px; background-color: var(--line-2); transition: width .3s var(--ease), background-color .2s; }
+.prog button:hover { background-color: var(--fg-3); }
+.prog button.d { background-color: var(--fg-3); }
+.prog button.n { background-color: var(--acc); width: 22px; }
+.count { font-size: 12.5px; color: var(--fg-3); min-width: 3.2em; text-align: right; }
+.ib { width: 34px; height: 34px; border-radius: var(--r-md); display: grid; place-items: center; color: var(--fg-2); transition: background-color .15s, color .15s; }
+.ib:not(:disabled):hover { background: var(--hover); color: var(--fg); }
+.bar .primary { padding: 7px 12px 7px 16px; }
+
+/* chapter switcher */
+.chapters { position: relative; margin-left: 4px; }
+.chap-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--fg-2); padding: 4px 8px 4px 10px; border-radius: 999px; background: var(--sub); transition: background-color .15s, color .15s; }
+.chap-btn:hover, .chap-btn.on { background: var(--hover); color: var(--fg); }
+.menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: 360px; max-height: 60vh; overflow-y: auto;
+  padding: 6px; border-radius: var(--r-lg); background: var(--raise);
+  box-shadow: 0 0 0 1px var(--line), 0 16px 40px -12px rgb(16 32 40 / .28); animation: menu-in .16s var(--ease);
+}
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } }
+.mi { width: 100%; display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; padding: 9px 10px; border-radius: var(--r-md); text-align: left; transition: background-color .15s; }
+.mi:hover { background: var(--sub); }
+.mi.on { background: var(--acc-soft); }
+.mi .no, .folded .no { font-size: 11px; font-weight: 600; color: var(--fg-3); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1px var(--line-2); }
+.mi.on .no { background: var(--acc); color: var(--acc-fg); box-shadow: none; }
+.mt { display: flex; flex-direction: column; min-width: 0; line-height: 1.45; }
+.mt b { font-weight: 500; color: var(--fg); }
+.mt span { font-size: 12px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms { font-size: 12px; color: var(--fg-3); padding-top: 2px; }
 
 /* buttons */
 .btn {
@@ -176,11 +201,13 @@ button:disabled { cursor: default; opacity: .4; }
 
 /* ---------- composer ---------- */
 .composer { padding: 10px 16px 20px; }
-.body + .composer { padding-left: var(--col); }
+.body + .composer { padding: 6px 24px 18px; }
 .sugg { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .sg { font-size: 12.5px; color: var(--fg-2); background: var(--sub); border-radius: 999px; padding: 4px 12px; }
 .sg:hover { background: var(--hover); color: var(--fg); }
 .body + .composer .sg { background: var(--raise); box-shadow: 0 0 0 1px var(--line); }
+.composer .under { margin-top: 10px; }
+.cost { color: var(--fg-3); cursor: default; }
 /* The glow: the wrapper's 1.5px padding is the box's border, and a blurred copy of the same travelling
    gradient spills out around the pill. Resting it is a hairline; with text the gradient turns and
    glows softly; while writing it turns faster and spills further. The panel does not clip (no
@@ -231,51 +258,39 @@ button:disabled { cursor: default; opacity: .4; }
 @keyframes blink { 0%, 100% { opacity: .25; } 40% { opacity: 1; } }
 
 /* ---------- lesson ----------
-   The step being read is a tab of the stage card: same surface, joined by concave corners,
-   so the text reads as the annotation of what the card shows. */
-.body { display: grid; grid-template-columns: var(--col) minmax(0, 1fr); min-height: 0; padding: 0 16px 0 0; }
-.lesson { display: flex; flex-direction: column; min-height: 0; }
-.lhead { padding: 6px 24px 18px; }
-.lhead .t { font-size: 20px; font-weight: 500; letter-spacing: -.02em; line-height: 1.4; }
-.lhead .q { font-size: 12.5px; color: var(--fg-3); margin-top: 6px; }
-.steps { list-style: none; padding: 14px 0 14px 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto; scrollbar-width: none; }
-.step {
-  position: relative; display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 11px 18px 11px 12px;
-  border-radius: var(--r-lg) 0 0 var(--r-lg); color: var(--fg-2); cursor: pointer;
-  transition: background-color .2s, color .2s; animation: step-in .35s var(--ease) both;
+   One narration beside its visual, on the same ground: no column, no card. Where the reader is shows
+   through brightness alone: the paragraph being read is ink, read ones fade, the next one is faint. */
+.body { display: grid; grid-template-columns: var(--col) minmax(0, 1fr); min-height: 0; gap: 8px; padding-right: 16px; }
+.narr { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 8px 20px 16px 28px; }
+.narr-in { margin-top: auto; display: flex; flex-direction: column; }
+.asked { font-size: 12.5px; color: var(--fg-3); padding-left: 10px; box-shadow: inset 2px 0 0 var(--line-2); margin: 18px 0 6px; line-height: 1.5; }
+.chap-t { font-size: 19px; font-weight: 500; letter-spacing: -.02em; line-height: 1.4; margin-bottom: 10px; }
+.para { font-size: 15px; line-height: 1.8; padding: 5px 0; cursor: pointer; transition: color .35s var(--ease); animation: para-in .4s var(--ease) both; }
+@keyframes para-in { from { opacity: 0; transform: translateY(6px); } }
+.para b { font-weight: 600; }
+.para.past { color: var(--fg-3); }
+.para.past:hover { color: var(--fg-2); }
+.para.now { color: var(--fg); cursor: default; }
+.para.now b { color: var(--acc-ink); }
+.para.next { color: var(--fg-4); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  -webkit-mask: linear-gradient(#000 40%, transparent); mask: linear-gradient(#000 40%, transparent); }
+.para.next:hover { color: var(--fg-3); }
+.folded {
+  display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; text-align: left;
+  padding: 8px 10px; margin: 2px -10px; border-radius: var(--r-md); color: var(--fg-3); transition: background-color .15s, color .15s;
 }
-@keyframes step-in { from { opacity: 0; transform: translateY(4px); } }
-.step:not(.now):hover { background: var(--sub); border-radius: var(--r-lg); margin-right: 12px; padding-right: 6px; }
-.step .n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--fg-3); margin-top: 1px; box-shadow: inset 0 0 0 1px var(--line-2); transition: background-color .2s, color .2s, box-shadow .2s; }
-.step p b { color: var(--fg); font-weight: 600; }
-.step.d .n { background: var(--fg-3); color: var(--bg); box-shadow: none; }
-.step.now { background: var(--raise); color: var(--fg); font-size: 15px; line-height: 1.7; padding-top: 14px; padding-bottom: 14px; cursor: default; }
-.step.now .n { background: var(--acc); color: var(--acc-fg); box-shadow: 0 0 0 4px var(--acc-soft); margin-top: 3px; }
-.step.now::before, .step.now::after {
-  content: ""; position: absolute; right: 0; width: 14px; height: 14px; pointer-events: none;
-}
-.step.now::before { top: -14px; background: radial-gradient(circle at 0 0, transparent 13.5px, var(--raise) 14px); }
-.step.now::after { bottom: -14px; background: radial-gradient(circle at 0 100%, transparent 13.5px, var(--raise) 14px); }
-.step.later { color: var(--fg-4); }
-.step.later p { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-.step.later .n { color: var(--fg-4); box-shadow: inset 0 0 0 1px var(--line); }
-.step.draft { cursor: default; color: var(--fg-2); }
-.step.draft:hover { background: none; margin-right: 0; padding-right: 18px; }
-.lfoot { display: flex; align-items: center; gap: 10px; padding: 12px 24px 16px; }
-.lfoot .primary, .fin { margin-left: auto; }
-.fin { display: inline-flex; align-items: center; gap: 6px; color: var(--acc-ink); font-weight: 500; font-size: 13.5px; }
+.folded:hover { background: var(--sub); color: var(--fg); }
+.folded .ft { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folded .fs { font-size: 12px; }
+.narr-in > .folded + .asked { margin-top: 22px; }
+.chap-pending { margin-top: 8px; }
+.narr .skel { padding: 10px 0; }
+.perr { display: flex; align-items: center; gap: 12px; padding: 8px 0; color: var(--fg-3); font-size: 13px; }
+.fin { display: inline-flex; align-items: center; gap: 6px; color: var(--acc-ink); font-weight: 500; font-size: 13.5px; padding: 0 6px; }
 .fin.wait { color: var(--fg-3); font-weight: 400; }
 
-/* follow-ups continue the lesson below its own steps */
-.steps .part { list-style: none; display: flex; flex-direction: column; gap: 2px; margin: 18px 18px 6px 12px; padding-top: 16px; border-top: 1px solid var(--line); }
-.steps .part b { font-size: 14.5px; font-weight: 600; color: var(--fg); }
-.steps .part span { font-size: 12.5px; color: var(--fg-3); }
-.steps .perr { list-style: none; display: flex; align-items: center; gap: 12px; padding: 10px 18px 10px 46px; color: var(--fg-3); font-size: 13px; }
-.steps .skel { list-style: none; padding: 12px 24px 12px 46px; }
-
-.stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--raise); border-radius: var(--r-xl); overflow: hidden; }
-.task { display: flex; align-items: baseline; gap: 10px; padding: 18px 24px 0; color: var(--fg-2); font-size: 13.5px; }
-.tag { flex: none; font-size: 11.5px; font-weight: 600; color: var(--acc-ink); background: var(--acc-soft); border-radius: 6px; padding: 1px 8px; }
+.stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.task { padding: 10px 8px 0; color: var(--fg-2); font-size: 13.5px; }
 .wbox { flex: 1; min-height: 0; display: flex; }
 .hw { flex: 1; border: 0; width: 100%; height: 100%; background: transparent; color-scheme: normal; }
 .empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 14px; color: var(--fg-2); text-align: center; max-width: 420px; padding: 40px; }
@@ -294,7 +309,7 @@ button:disabled { cursor: default; opacity: .4; }
 
 /* bubble sort */
 .bs { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
-.bs-viz { display: flex; flex-direction: column; padding: 18px 24px 20px; min-height: 0; gap: 14px; }
+.bs-viz { display: flex; flex-direction: column; padding: 14px 8px 12px; min-height: 0; gap: 14px; }
 .bs-chart { position: relative; flex: 1; min-height: 0; border-radius: var(--r-lg); background: var(--sub);
   background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 25%; overflow: hidden; }
 .bs-bar { position: absolute; top: 0; bottom: 0; padding: 22px 8px 34px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; transition: left .38s cubic-bezier(.4, 0, .2, 1); }
@@ -310,7 +325,7 @@ button:disabled { cursor: default; opacity: .4; }
 .player input::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--raise); box-shadow: 0 0 0 1.5px var(--fg-2); cursor: grab; }
 
 /* code beside a widget */
-.code { display: flex; flex-direction: column; min-height: 0; margin: 18px 18px 20px 0; border-radius: var(--r-lg); background: var(--sub); }
+.code { display: flex; flex-direction: column; min-height: 0; margin: 14px 0 12px 8px; border-radius: var(--r-lg); background: var(--sub); }
 .ctabs { display: flex; align-items: center; gap: 2px; padding: 8px 8px 0; }
 .ct { font-size: 12px; padding: 4px 10px; border-radius: 7px; color: var(--fg-3); font-family: var(--mono); }
 .ct.on { color: var(--fg); background: var(--raise); }
@@ -322,7 +337,7 @@ button:disabled { cursor: default; opacity: .4; }
 .kw { color: var(--acc-ink); font-weight: 500; }
 
 /* plot widget (Mafs) */
-.pw { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 20px; min-width: 0; min-height: 0; }
+.pw { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 14px 8px 12px; min-width: 0; min-height: 0; }
 .pw-plot { flex: 1; min-height: 0; border-radius: var(--r-lg); background: var(--sub); overflow: hidden; }
 .pw-plot .MafsView {
   --mafs-bg: transparent; --mafs-fg: var(--fg); --mafs-line-color: var(--line-2); --mafs-origin-color: var(--fg-3);

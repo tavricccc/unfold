@@ -26,8 +26,10 @@ export function Home({ lessons, gen, onAsk, open }: {
           </svg>
           <h1>今天想<em>弄懂</em>什麼？</h1>
           <p className="lead">問一個問題，它會一步一步展開成一堂可以動手玩的課。</p>
-          <Composer big autoFocus onSubmit={onAsk} placeholder="一個問題、一個好奇、一個卡住的地方…" />
-          <div className="under"><span className="chip"><i />{MODEL_LABEL[gen.model]}{gen.effort && ` · ${EFFORT_LABEL[gen.effort]}`}</span><span>Enter 送出 · Shift + Enter 換行</span></div>
+          <Composer
+            big autoFocus onSubmit={onAsk} placeholder="一個問題、一個好奇、一個卡住的地方…"
+            foot={<><span className="chip"><i />{MODEL_LABEL[gen.model]}{gen.effort && ` · ${EFFORT_LABEL[gen.effort]}`}</span><span>Enter 送出 · Shift + Enter 換行</span></>}
+          />
           <div className="try"><span className="lbl">試試</span>{TRY.map((t) => <button key={t} className="sg" onClick={() => onAsk(t)}>{t}</button>)}</div>
           {going.length > 0 && (
             <div className="cont">

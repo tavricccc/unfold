@@ -304,7 +304,7 @@ fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>
             Ok(mut r) => {
               if more {
                 let q = r["pending"]["question"].clone();
-                let part = json!({ "question": q, "lesson": ev["lesson"], "model": ev["model"] });
+                let part = json!({ "question": q, "lesson": ev["lesson"], "model": ev["model"], "cost": ev["cost"] });
                 match r["more"].as_array_mut() {
                   Some(m) => m.push(part),
                   None => r["more"] = json!([part]),
@@ -319,6 +319,7 @@ fn spawn_job(app2: AppHandle, id2: String, prompt: String, model: Option<String>
                   o.remove("draft");
                 }
                 r["model"] = ev["model"].clone();
+                r["cost"] = ev["cost"].clone();
               }
               if let Err(e) = write_record(&app2, &id2, &r) {
                 return fail(format!("無法儲存課程：{e}"));

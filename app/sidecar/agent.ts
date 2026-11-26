@@ -3,7 +3,7 @@
 //   in:  { "question": string, "model"?: string, "effort"?: "low" | "medium" | "high" | "xhigh" | "max" }
 //   out: { "type": "status", "text": string }
 //        { "type": "partial", "lesson": Partial<Lesson> }   title/steps so far, no widget
-//        { "type": "lesson", "lesson": Lesson, "model": string }
+//        { "type": "lesson", "lesson": Lesson, "model": string, "cost": Cost }   what this run cost, as Claude Code reports it
 //        { "type": "error", "message": string }
 // Env: UNFOLD_CLAUDE_PATH, the Claude Code executable to drive (set by the app).
 import { query } from '@anthropic-ai/claude-agent-sdk';
@@ -69,7 +69,13 @@ async function main() {
     }
     if (m.type === 'result') {
       if (m.subtype === 'success' && m.structured_output) {
-        emit({ type: 'lesson', lesson: m.structured_output, model });
+        const u = m.usage ?? {};
+        const cost = {
+          usd: m.total_cost_usd ?? 0,
+          input: u.input_tokens ?? 0, output: u.output_tokens ?? 0,
+          cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0,
+        };
+        emit({ type: 'lesson', lesson: m.structured_output, model, cost });
         return;
       }
       throw new Error(`generation failed: ${m.subtype}${m.errors ? ' ' + JSON.stringify(m.errors) : ''}`);
