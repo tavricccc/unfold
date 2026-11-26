@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 
 export type Theme = 'light' | 'dark' | 'system';
-export type Accent = 'green' | 'orange' | 'coral' | 'mono';
+export type Accent = 'teal' | 'orange' | 'coral' | 'mono';
+const ACCENTS: Accent[] = ['teal', 'orange', 'coral', 'mono'];
 export type Model = 'sonnet' | 'opus' | 'haiku';
 
 export interface Settings { theme: Theme; accent: Accent; model: Model }
 
 const KEY = 'unfold.settings';
-const DEFAULTS: Settings = { theme: 'system', accent: 'green', model: 'sonnet' };
+const DEFAULTS: Settings = { theme: 'system', accent: 'teal', model: 'sonnet' };
 
 function load(): Settings {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    const s: Settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    // an accent that no longer exists (the old green) falls back to the default
+    return ACCENTS.includes(s.accent) ? s : { ...s, accent: DEFAULTS.accent };
   } catch {
     return DEFAULTS;
   }

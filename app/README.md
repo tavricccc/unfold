@@ -21,6 +21,8 @@ bun run tauri build
 Produces `Unfold_<version>_x64-setup.exe` (NSIS, per-user install, no admin) under `<target>/release/bundle/nsis/`.
 The build first compiles the sidecar into `src-tauri/binaries/unfold-agent-*.exe` with `bun build --compile`; the app runs it from its install folder and points it at the user's own `claude` executable.
 
+Fonts are bundled in `src/fonts`; `bun tools/fetch-fonts.ts` rebuilds them (Instrument Sans, DM Mono, and GenYo Gothic TW cut into unicode-range slices; needs Python with fonttools and brotli).
+
 `bun run check` runs the expression and streaming-parser checks.
 
 `bun run dev` alone opens the UI in a browser with recorded sample lessons and a fake generator, for layout work without Claude.

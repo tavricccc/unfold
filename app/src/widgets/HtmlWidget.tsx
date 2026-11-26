@@ -7,7 +7,8 @@ const ANIM_MS = 1600;
 
 function themeVars() {
   const cs = getComputedStyle(document.documentElement);
-  return VARS.map((v) => `${v}:${cs.getPropertyValue(v).trim()};`).join('');
+  // the widget sits on the stage card, so its background is the card's surface
+  return VARS.map((v) => `${v}:${cs.getPropertyValue(v === '--bg' ? '--raise' : v).trim()};`).join('');
 }
 
 /** Re-reads the theme variables whenever <html> switches theme or accent. */
