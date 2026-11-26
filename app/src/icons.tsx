@@ -29,11 +29,10 @@ export const subjectIcon = (s?: Subject) => (Icon[s ?? 'other'] ?? Icon.other)()
 export const Mark = () => (
   <span className="mark">
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-      <path className="f f2" d="M2.5 17.5 8 14.5V5.5L2.5 8.5z" />
-      <path className="f" d="M8 14.5 13.5 17V8L8 5.5z" />
-      <path className="f f2" d="M13.5 17 21.5 13V4L13.5 8z" />
-      <path className="ln2" d="M15.8 9.6l3.4-1.7M15.8 12.2l2.4-1.2" />
-      <circle className="acc" cx="10.75" cy="11.2" r="1.5" />
+      <path className="f f2" d="M12 7.2C9.6 5.6 6.4 5 2.8 5.4v12.2c3.6-.4 6.8.2 9.2 1.8z" />
+      <path className="f" d="M12 7.2c2.4-1.6 5.6-2.2 9.2-1.8v12.2c-3.6-.4-6.8.2-9.2 1.8z" />
+      <path className="ln2" d="M5.2 9.2c1.6-.1 3 .2 4.4.8M5.2 12c1.6-.1 3 .2 4.4.8M5.2 14.8c1.2-.1 2.3.1 3.2.4M14.4 12.8c1.4-.6 2.8-.9 4.4-.8M14.4 15.6c1.4-.6 2.8-.9 4.4-.8" />
+      <circle className="acc" cx="16.6" cy="9.2" r="1.5" />
     </svg>
   </span>
 );
