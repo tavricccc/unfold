@@ -12,14 +12,14 @@ export const SHELL = (() => {
   return fs.existsSync(p) ? p : path.join(base, d, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
 })();
 
-export async function launch({ width, height, userDataDir }) {
+export async function launch({ width, height, userDataDir, dsf = 1 }) {
   const args = [
     '--remote-debugging-port=0', `--user-data-dir=${userDataDir}`,
     '--deterministic-mode', '--enable-begin-frame-control', '--run-all-compositor-stages-before-draw',
     '--disable-threaded-animation', '--disable-threaded-scrolling', '--disable-checker-imaging',
     '--disable-new-content-rendering-timeout', '--disable-image-animation-resync',
     '--hide-scrollbars', '--font-render-hinting=none', '--force-color-profile=srgb', '--disable-gpu-vsync',
-    `--window-size=${width},${height}`, 'about:blank',
+    `--window-size=${width},${height}`, `--force-device-scale-factor=${dsf}`, 'about:blank',
   ];
   const proc = spawn(SHELL, args, { stdio: ['ignore', 'ignore', 'pipe'] });
   const wsUrl = await new Promise((res, rej) => {

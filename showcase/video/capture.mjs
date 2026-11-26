@@ -11,7 +11,7 @@ const OUT = arg('out', 'R:/unfold-video/film.mp4'), STILLS = arg('stills'), EVER
 const W = 1920, H = 1080;
 
 const srv = await serve(process.env.FILM_OUT ?? 'R:/unfold-video/dist');
-const b = await launch({ width: W, height: H, userDataDir: `R:/unfold-video/prof-cap-${process.pid}` });
+const b = await launch({ width: W, height: H, dsf: DSF, userDataDir: `R:/unfold-video/prof-cap-${process.pid}` });
 const queue = [];
 const p = await openPage(b, { url: `${srv.url}/film.html?capture=1`, width: W, height: H, dsf: DSF, onBinding: (c) => queue.push(c) });
 const s = p.s;
