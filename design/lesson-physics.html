@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="light" data-accent="green">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unfold · 斜拋</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=LXGW+WenKai+TC:wght@400;700&display=swap">
+<link rel="stylesheet" href="unfold.css">
+<style>
+.panes { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; padding: 14px 20px 18px; overflow: hidden; }
+.ctrl { display: grid; grid-template-columns: 1fr 1fr 150px auto auto; gap: 28px; align-items: end; padding: 2px 2px 4px; }
+.lower { display: grid; grid-template-columns: 300px 1fr; gap: 12px; }
+.lower .meta { grid-template-columns: 1fr 1fr 1fr; margin: 0; align-content: stretch; }
+.plot { position: relative; flex: 1; border-radius: var(--r-lg); background: var(--sub); min-height: 0; overflow: hidden; }
+.plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.grid line { stroke: var(--line); stroke-width: 1; }
+.axis { fill: none; stroke: var(--fg-3); stroke-width: 1.2; }
+.tk { font-family: var(--sans); font-size: 12px; fill: var(--fg-3); }
+.path { fill: none; stroke: var(--acc); stroke-width: 3; stroke-linecap: round; }
+.ghost { fill: none; stroke: var(--fg-3); stroke-width: 1.6; stroke-dasharray: 5 6; }
+.ball { fill: var(--raise); stroke: var(--fg); stroke-width: 2.2; }
+.vx { stroke: var(--fg); stroke-width: 2.2; } .vy { stroke: var(--acc); stroke-width: 2.2; }
+.al { font-family: var(--sans); font-size: 13px; font-weight: 600; }
+.peak { fill: var(--acc); }
+.lbl { font-family: var(--sans); font-size: 12.5px; fill: var(--fg-2); }
+.chipt { position: absolute; top: 14px; left: 16px; display: flex; gap: 8px; }
+.chipt span { font-size: 12px; background: var(--raise); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--fg-2); }
+.meta strong { font-size: 18px; }
+.meta small { font-size: 12px; color: var(--fg-3); font-weight: 400; margin-left: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.trials { border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+th { text-align: left; font-weight: 500; color: var(--fg-3); padding: 7px 14px; background: var(--sub); }
+td { padding: 7px 14px; border-top: 1px solid var(--line); color: var(--fg-2); }
+tr.cur td { color: var(--fg); font-weight: 500; }
+tr.cur td:first-child { box-shadow: inset 2px 0 0 var(--acc); }
+.sw { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid var(--acc); vertical-align: 3px; margin-right: 6px; }
+.sw.g { border-top: 1.6px dashed var(--fg-3); }
+.f .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.f .row span { color: var(--fg-2); }
+.f .row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.f .row b small { font-weight: 400; color: var(--fg-3); }
+.rng { height: 4px; border-radius: 4px; background: var(--line); position: relative; }
+.rng i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--fg); }
+.rng b { position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: var(--raise); box-shadow: 0 0 0 1.5px var(--fg); transform: translate(-50%, -50%); }
+.f .row { white-space: nowrap; }
+.f { display: flex; flex-direction: column; justify-content: space-between; height: 60px; }
+.f .rng { margin-bottom: 12px; }
+.sel { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 5px 10px 5px 12px; background: var(--raise); }
+.tog { display: flex; align-items: center; gap: 10px; height: 34px; white-space: nowrap; }
+.tog i { width: 34px; height: 20px; border-radius: 999px; background: var(--line-2); position: relative; }
+.tog i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--raise); }
+.launch { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: var(--r-md); background: var(--fg); color: var(--bg); font-weight: 600; padding: 8px 18px; transition: transform .12s; }
+.launch:active { transform: translateY(1px); }
+</style>
+</head>
+<body data-active="proj">
+<div class="app">
+  <aside class="side"></aside>
+  <main class="panel">
+    <header class="bar">
+      <div class="crumb">物理 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg>力學 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg><b>斜拋</b></div>
+      <span class="sp"></span>
+      <div class="prog"><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i><i></i></div>
+      <span class="pill tnum">4 / 7</span>
+      <span class="ib"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>
+    </header>
+    <div class="body">
+      <div class="lesson">
+        <div class="lhead"><div class="t">斜拋：一個運動拆成兩個</div><div class="q">你問：為什麼斜著丟會畫出拋物線？</div></div>
+        <div class="steps">
+          <div class="step d"><span class="n">1</span><p>以 20 m/s、仰角 30° 踢出去。速度拆成兩支箭頭：水平 17.3，向上 10。</p></div>
+          <div class="step d"><span class="n">2</span><p>水平方向沒有力在推或拉，所以 17.3 m/s 一路不變。</p></div>
+          <div class="step d"><span class="n">3</span><p>垂直方向有重力：每過一秒，向上的速度少 9.81 m/s。</p></div>
+          <div class="step now"><span class="n">4</span><p>到最高點時向上的速度剛好歸零，花了 10 ÷ 9.81 ≈ 1.02 秒。下降和上升對稱，<b>總共飛 2.04 秒，落在 35.3 公尺外</b>。</p></div>
+          <div class="step later"><span class="n">5</span><p>角度改成 15°，猜猜看會飛多遠</p></div>
+        </div>
+        <div class="lfoot"><button class="btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m15 6-6 6 6 6"/></svg>上一步</button><button class="primary">下一步 <kbd>→</kbd></button></div>
+      </div>
+      <div class="stage">
+        <div class="task"><span class="tag">試試看</span>固定速度，只改角度，跟上一次比較射程。<span class="sp"></span><div class="seg"><span class="on">軌跡</span><span>速度圖</span></div></div>
+        <div class="panes">
+          <div class="ctrl">
+            <div class="f"><div class="row"><span>初速</span><b>20 <small>m/s</small></b></div><div class="rng"><i style="width:40%"></i><b style="left:40%"></b></div></div>
+            <div class="f"><div class="row"><span>仰角</span><b>30°</b></div><div class="rng"><i style="width:33%"></i><b style="left:33%"></b></div></div>
+            <div class="f"><div class="row"><span>重力</span><b>9.81 <small>m/s²</small></b></div><div class="sel"><span>地球</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m7 10 5 5 5-5"/></svg></div></div>
+            <div class="tog"><span style="color:var(--fg-2)">空氣阻力</span><i></i></div>
+            <button class="launch"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>發射</button>
+          </div>
+          <div class="plot">
+            <div class="chipt"><span class="tnum">t = 1.02 s</span><span>忽略空氣阻力</span></div>
+            <svg id="sv" viewBox="20 40 800 360" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <div class="lower">
+            <div class="meta"><div>射程<strong>35.3<small>m</small></strong></div><div>最高<strong>5.1<small>m</small></strong></div><div>飛行時間<strong>2.04<small>s</small></strong></div></div>
+            <div class="trials"><table>
+              <tr><th>#</th><th>速度</th><th>角度</th><th>射程</th><th>最高</th><th>時間</th></tr>
+              <tr class="cur"><td><span class="sw"></span>2</td><td>20 m/s</td><td>30°</td><td>35.3 m</td><td>5.1 m</td><td>2.04 s</td></tr>
+              <tr><td><span class="sw g"></span>1</td><td>20 m/s</td><td>15°</td><td>20.4 m</td><td>1.4 m</td><td>1.06 s</td></tr>
+            </table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="composer" style="border-top:1px solid var(--line)">
+      <div class="sugg"><span class="sg">45° 是最遠的嗎？</span><span class="sg">加上空氣阻力會怎樣？</span></div>
+      <div class="glow quiet"><div class="box"><span class="ph">追問這一課，或問一個新問題…</span>
+        <button class="send" aria-label="送出"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div></div>
+    </footer>
+  </main>
+</div>
+<script src="shell.js"></script>
+<script>
+// Projectile plot: v0, angle in degrees, g = 9.81. 1 m = 20 px.
+const sv = document.getElementById('sv'), X0 = 70, Y0 = 360, K = 20, g = 9.81;
+const P = (x, y) => `${(X0 + x * K).toFixed(1)},${(Y0 - y * K).toFixed(1)}`;
+const traj = (v, deg) => { const a = deg * Math.PI / 180, vx = v * Math.cos(a), vy = v * Math.sin(a), T = 2 * vy / g; let d = '';
+  for (let i = 0; i <= 60; i++) { const t = T * i / 60; d += (i ? 'L' : 'M') + P(vx * t, vy * t - g * t * t / 2); } return d; };
+let h = '<g class="grid">';
+for (let m = 0; m <= 35; m += 5) h += `<line x1="${X0 + m * K}" y1="${Y0 - 11 * K}" x2="${X0 + m * K}" y2="${Y0}"/>`;
+for (let m = 0; m <= 10; m += 5) h += `<line x1="${X0}" y1="${Y0 - m * K}" x2="${X0 + 37 * K}" y2="${Y0 - m * K}"/>`;
+h += '</g>';
+h += `<path class="axis" d="M${X0} ${Y0 - 11 * K}V${Y0}H${X0 + 37 * K}"/>`;
+for (let m = 0; m <= 35; m += 5) h += `<text class="tk" x="${X0 + m * K}" y="${Y0 + 20}" text-anchor="middle">${m}</text>`;
+for (let m = 5; m <= 10; m += 5) h += `<text class="tk" x="${X0 - 10}" y="${Y0 - m * K + 4}" text-anchor="end">${m}</text>`;
+h += `<text class="tk" x="${X0 + 37 * K}" y="${Y0 + 20}" text-anchor="end">公尺</text>`;
+h += `<path class="ghost" d="${traj(20, 15)}"/>`;
+h += `<path class="path" d="${traj(20, 30)}"/>`;
+// peak
+const px = 17.32 * 1.019, py = 5.097;
+h += `<path d="M${X0 + px * K} ${Y0 - py * K}V${Y0}" stroke="var(--line-2)" stroke-dasharray="3 4"/>`;
+// ball at peak with arrows: vx only (vy = 0)
+h += `<line class="vx" x1="${X0 + px * K}" y1="${Y0 - py * K}" x2="${X0 + px * K + 17.32 * 4.2}" y2="${Y0 - py * K}" marker-end="url(#ah)"/>`;
+h += `<circle class="ball" cx="${X0 + px * K}" cy="${Y0 - py * K}" r="8"/>`;
+h += `<text class="al" x="${X0 + px * K + 78}" y="${Y0 - py * K - 10}" fill="var(--fg)">水平 17.3</text>`;
+h += `<text class="al" x="${X0 + px * K - 12}" y="${Y0 - py * K - 20}" fill="var(--acc-ink)" text-anchor="middle">向上 0</text>`;
+h += `<text class="lbl" x="${X0 + px * K - 8}" y="${Y0 - py * K / 2}" text-anchor="end">最高 5.1 m</text>`;
+// launch arrows at origin
+h += `<line class="vy" x1="${X0}" y1="${Y0}" x2="${X0}" y2="${Y0 - 10 * 4.2}" marker-end="url(#ahc)"/>`;
+h += `<line class="vx" x1="${X0}" y1="${Y0}" x2="${X0 + 17.32 * 4.2}" y2="${Y0}" marker-end="url(#ah)"/>`;
+h += `<path d="M${X0 + 34} ${Y0} A34 34 0 0 0 ${X0 + 34 * Math.cos(Math.PI / 6)} ${Y0 - 34 * Math.sin(Math.PI / 6)}" fill="none" stroke="var(--fg-3)"/>`;
+h += `<text class="lbl" x="${X0 + 40}" y="${Y0 - 8}">30°</text>`;
+h += `<circle cx="${X0 + 35.3 * K}" cy="${Y0}" r="5" class="peak"/><text class="al" x="${X0 + 35.3 * K}" y="${Y0 - 14}" text-anchor="middle" fill="var(--acc-ink)">35.3 m</text>`;
+h += `<text class="lbl" x="${X0 + 20.4 * K + 6}" y="${Y0 - 10}">20.4 m</text>`;
+sv.innerHTML = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--fg)"/></marker><marker id="ahc" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--acc)"/></marker></defs>` + h;
+</script>
+</body>
+</html>
