@@ -19,6 +19,7 @@
   --done: #1f3038;
 
   --acc: #0d7480; --acc-fg: #ffffff; --acc-soft: #dcedef; --acc-ink: #0a5d67;
+  --glow-1: var(--acc); --glow-2: #5fc2cc; --glow-3: #f0b44c; --glow-4: #e8795a;
 
   --sans: "Instrument Sans", "GenYo Gothic TW", system-ui, sans-serif;
   --mono: "DM Mono", "GenYo Gothic TW", ui-monospace, monospace;
@@ -140,6 +141,11 @@ button:disabled { cursor: default; opacity: .4; }
 /* ---------- home ---------- */
 .home { display: flex; flex-direction: column; justify-content: center; padding: 0 48px 56px; overflow: auto; }
 .home .col { width: 100%; max-width: 720px; margin: 0 auto; }
+.art { display: block; margin: 0 0 28px -14px; color: var(--fg); }
+.art .f { fill: var(--raise); stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+.art .f2 { fill: var(--sub); }
+.art .acc { fill: var(--acc); }
+.art .ln2 { stroke: var(--fg-3); stroke-width: 1.2; stroke-linecap: round; }
 .home h1 { font-size: 44px; font-weight: 500; letter-spacing: -.035em; line-height: 1.2; }
 .home h1 em { font-style: normal; color: var(--acc); }
 .lead { color: var(--fg-3); margin-top: 10px; font-size: 15.5px; max-width: 34em; }
@@ -169,35 +175,45 @@ button:disabled { cursor: default; opacity: .4; }
 .rowl .when { font-size: 12px; color: var(--fg-3); }
 
 /* ---------- composer ---------- */
-.composer { padding: 10px 16px 16px; }
+.composer { padding: 10px 16px 18px; }
 .body + .composer { padding-left: var(--col); }
 .sugg { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .sg { font-size: 12.5px; color: var(--fg-2); background: var(--sub); border-radius: 999px; padding: 4px 12px; }
 .sg:hover { background: var(--hover); color: var(--fg); }
 .body + .composer .sg { background: var(--raise); box-shadow: 0 0 0 1px var(--line); }
-.glow { position: relative; border-radius: 999px; isolation: isolate; }
-.glow::before, .glow::after {
-  content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
-  background: conic-gradient(from var(--glow-a), var(--acc), transparent 30%, transparent 50%, var(--acc) 80%, var(--acc));
-  animation: glow-spin 5s linear infinite;
+/* The glow: the wrapper's 1.5px padding is the box's border. Resting it is a hairline; with text a
+   travelling conic gradient shows through it; while writing, the gradient runs at full strength, a soft
+   ring sits close around the pill and a light sweeps inside it. Everything stays within 14px of the pill,
+   inside the composer's padding, so nothing is clipped by the panel. */
+.glow {
+  position: relative; border-radius: 999px; padding: 1.5px; isolation: isolate;
+  background: var(--line); transition: background-color .2s, box-shadow .4s var(--ease);
 }
 .glow::before {
-  padding: 1.5px; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude; opacity: .5; z-index: 1;
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1; pointer-events: none;
+  background: conic-gradient(from var(--glow-a), var(--glow-1), var(--glow-2), var(--glow-3), var(--glow-4), var(--glow-1));
+  animation: glow-spin 6s linear infinite; opacity: .6; transition: opacity .4s;
 }
-.glow::after { inset: 6px; filter: blur(18px); opacity: .18; z-index: -1; }
-.glow.live::before { opacity: 1; }
-.glow.live::after { opacity: .22; inset: 4px; }
-.glow.quiet::before { opacity: 0; } .glow.quiet::after { opacity: 0; }
+.glow.quiet::before { opacity: 0; }
+.glow.quiet:focus-within { background: var(--line-2); }
+.glow.quiet:focus-within::before { opacity: .35; }
+.glow.live::before { opacity: 1; animation-duration: 3s; }
+.glow.live {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--glow-1) 12%, transparent),
+              0 6px 16px -8px color-mix(in srgb, var(--glow-1) 55%, transparent);
+}
 @keyframes glow-spin { to { --glow-a: 360deg; } }
 .box {
-  position: relative; display: flex; align-items: center; gap: 8px; border-radius: 999px;
+  position: relative; display: flex; align-items: center; gap: 8px; border-radius: 999px; overflow: hidden;
   background: var(--raise); padding: 7px 7px 7px 22px; min-height: 52px;
-  box-shadow: 0 0 0 1px var(--line), 0 2px 8px -4px rgb(16 32 40 / .12);
-  transition: box-shadow .2s;
 }
-.glow:not(.quiet) .box { box-shadow: 0 2px 8px -4px rgb(16 32 40 / .12); }
-.box:focus-within { box-shadow: 0 0 0 1px var(--line-2), 0 4px 16px -6px rgb(16 32 40 / .18); }
+.box > * { position: relative; }
+.glow.live .box::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--glow-1) 9%, transparent) 50%, transparent 65%);
+  background-size: 260% 100%; animation: sweep 2.6s linear infinite;
+}
+@keyframes sweep { from { background-position: 130% 0; } to { background-position: -130% 0; } }
 .box textarea {
   flex: 1; resize: none; border: 0; outline: 0; background: transparent; color: var(--fg);
   font: inherit; line-height: 1.5; padding: 6px 0; max-height: 160px;
