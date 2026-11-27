@@ -73,6 +73,15 @@ fn lesson_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
   Ok(lessons_dir(app)?.join(format!("{id}.json")))
 }
 
+/// Serialises every read-modify-write of a lesson record: the learner's progress and renames are
+/// saved while a sidecar thread saves drafts and answers into the same file, and without this one
+/// could write back a copy read before the other's change and lose it.
+static RECORDS: Mutex<()> = Mutex::new(());
+
+fn records() -> std::sync::MutexGuard<'static, ()> {
+  RECORDS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn read_record(app: &AppHandle, id: &str) -> Result<Value, String> {
   let raw = fs::read_to_string(lesson_path(app, id)?).map_err(|e| e.to_string())?;
   serde_json::from_str(&raw).map_err(|e| e.to_string())
@@ -178,6 +187,7 @@ fn get_lesson(app: AppHandle, id: String) -> Result<Value, String> {
 
 #[tauri::command]
 fn set_progress(app: AppHandle, id: String, step: u32) -> Result<(), String> {
+  let _g = records();
   let mut rec = read_record(&app, &id)?;
   rec["step"] = json!(step);
   write_record(&app, &id, &rec)
@@ -186,6 +196,7 @@ fn set_progress(app: AppHandle, id: String, step: u32) -> Result<(), String> {
 /// Renames a chapter (0-based); an empty name goes back to the one Claude wrote.
 #[tauri::command]
 fn rename_chapter(app: AppHandle, id: String, chapter: usize, name: String) -> Result<(), String> {
+  let _g = records();
   let mut rec = read_record(&app, &id)?;
   let name = name.trim();
   if !rec["names"].is_object() {
@@ -211,6 +222,7 @@ fn cancel_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String) -> Result
   let Some(pid) = pid else { return Err("這一課已經不在生成了".into()) };
   jobs.stopped.lock().map_err(|e| e.to_string())?.insert(id.clone());
   kill_tree(pid);
+  let _g = records();
   let mut r = read_record(&app, &id)?;
   if r["pending"].is_object() {
     r["pending"]["status"] = json!("error");
@@ -289,6 +301,7 @@ fn answer_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, answers: 
   if jobs.running.lock().map_err(|e| e.to_string())?.contains_key(&id) {
     return Err("這一課還在生成".into());
   }
+  let _g = records();
   let mut rec = read_record(&app, &id)?;
   if rec["status"] != "asking" {
     return Err("這一課沒有在等你回答".into());
@@ -307,6 +320,7 @@ fn continue_course(app: AppHandle, jobs: tauri::State<Jobs>, id: String, model: 
   if jobs.running.lock().map_err(|e| e.to_string())?.contains_key(&id) {
     return Err("這一課還在生成".into());
   }
+  let _g = records();
   let mut rec = read_record(&app, &id)?;
   let outline = rec["course"]["outline"].as_array().cloned().unwrap_or_default();
   let written = 1 + rec["more"].as_array().map_or(0, |m| m.iter().filter(|p| p["course"] == true).count());
@@ -331,6 +345,7 @@ fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, questio
   if jobs.running.lock().map_err(|e| e.to_string())?.contains_key(&id) {
     return Err("這一課還在生成".into());
   }
+  let _g = records();
   let mut rec = read_record(&app, &id)?;
   if rec["pending"]["status"] == "generating" {
     return Err("上一個追問還在生成".into());
@@ -352,6 +367,7 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
   std::thread::spawn(move || {
     let fail = |msg: String| {
       log::error!("lesson {id2} failed: {msg}");
+      let _g = records();
       if let Ok(mut r) = read_record(&app2, &id2) {
         let t = if r["pending"].is_object() { &mut r["pending"] } else { &mut r };
         t["status"] = json!("error");
@@ -407,6 +423,7 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
       match ev["type"].as_str() {
         Some("partial") => {
           let mut more = false;
+          let _g = records();
           if let Ok(mut r) = read_record(&app2, &id2) {
             more = r["pending"].is_object();
             let t = if more { &mut r["pending"] } else { &mut r };
@@ -419,6 +436,8 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
         }
         Some("ask") | Some("outline") => {
           let kind = ev["type"].as_str().unwrap_or_default();
+          let saved = {
+          let _g = records();
           match read_record(&app2, &id2) {
             Ok(mut r) => {
               match kind {
@@ -434,15 +453,18 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
               }
               r["model"] = ev["model"].clone();
               r["cost"] = add_cost(&r["cost"], &ev["cost"]);
-              if let Err(e) = write_record(&app2, &id2, &r) {
-                return fail(format!("無法儲存課程：{e}"));
-              }
-              let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "ready" }));
+              write_record(&app2, &id2, &r).map_err(|e| format!("無法儲存課程：{e}"))
             }
-            Err(e) => return fail(format!("課程紀錄不見了：{e}")),
+            Err(e) => Err(format!("課程紀錄不見了：{e}")),
+          }
+          };
+          match saved {
+            Ok(()) => { let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "ready" })); }
+            Err(m) => return fail(m),
           }
         }
         Some("session") => {
+          let _g = records();
           if let Ok(mut r) = read_record(&app2, &id2) {
             r["session"] = ev["id"].clone();
             if let Err(e) = write_record(&app2, &id2, &r) {
@@ -452,6 +474,8 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
         }
         Some("lesson") | Some("part") => {
           got_result = true;
+          let saved = {
+          let _g = records();
           match read_record(&app2, &id2) {
             Ok(mut r) => {
               if ev["type"] == "part" {
@@ -478,12 +502,14 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
               if ev["next"].is_object() {
                 r["pending"] = json!({ "question": ev["next"]["question"], "status": "generating", "at": ev["next"]["at"], "course": true });
               }
-              if let Err(e) = write_record(&app2, &id2, &r) {
-                return fail(format!("無法儲存課程：{e}"));
-              }
-              let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "ready" }));
+              write_record(&app2, &id2, &r).map_err(|e| format!("無法儲存課程：{e}"))
             }
-            Err(e) => return fail(format!("課程紀錄不見了：{e}")),
+            Err(e) => Err(format!("課程紀錄不見了：{e}")),
+          }
+          };
+          match saved {
+            Ok(()) => { let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "ready" })); }
+            Err(m) => return fail(m),
           }
         }
         Some("error") => {
