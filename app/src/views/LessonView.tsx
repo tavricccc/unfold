@@ -126,7 +126,7 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
   }, [next, prev, toChapter, replay, cur, chs, rec?.status, stageExpanded]);
 
   // The narration moves by scrolling: the wheel steps through it, and whatever brings a new
-  // paragraph in (the wheel, 繼續, a key, a click) glides it to the middle of the column.
+  // paragraph in (the wheel, 繼續, a key, a click) glides it to the bottom of the column.
   const wheel = useRef({ acc: 0, until: 0 });
   useEffect(() => {
     const el = narr.current;
@@ -146,10 +146,11 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
     return () => el.removeEventListener('wheel', onWheel);
   }, [next, prev, rec?.status]);
 
+  // Nothing past the next paragraph is rendered, so the newest text is always at the end: keep the
+  // column pinned to its bottom.
   useEffect(() => {
     const box = narr.current;
-    const at = box?.querySelector<HTMLElement>('.chap-pending .skel, .chap-pending .perr') ?? box?.querySelector<HTMLElement>('.para.now');
-    at?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box?.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
   }, [step, rec]);
 
   // Reset dirty state when switching chapter/version
