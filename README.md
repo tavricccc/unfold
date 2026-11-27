@@ -18,39 +18,25 @@
 - **自動更新**：有新版本時，app 會提示你一鍵更新並重新啟動。
 - **離線字型**：內建 Instrument Sans、DM Mono，以及切片過的源樣黑體。
 
-## 需求
+## 安裝
 
-- 已安裝並登入 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)（`claude --version`）
-- [Bun](https://bun.sh/)
-- [Rust](https://www.rust-lang.org/)（用來建置 Tauri 桌面程式）
+1. 先安裝並登入 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)：在 PowerShell 執行 `irm https://claude.ai/install.ps1 | iex`，再執行一次 `claude` 完成登入。
+2. 到 [Releases](https://github.com/tavricccc/unfold/releases/latest) 下載 `Unfold_<版本>_x64-setup.exe` 並安裝（目前只支援 Windows，免系統管理員）。
+3. 打開 Unfold，問第一個問題。之後有新版本時，app 會提示你更新。
 
-## 快速開始
+安裝檔目前沒有程式碼簽章，Windows SmartScreen 可能會跳出警告，按「其他資訊 → 仍要執行」即可。
+
+## 開發
+
+需要 [Bun](https://bun.sh/) 和 [Rust](https://www.rust-lang.org/)。
 
 ```sh
 cd app
 bun install
-bun run tauri dev
-```
-
-在瀏覽器預覽介面，使用錄好的範例課程（不需要 Claude）：
-
-```sh
-cd app
-bun run dev
-```
-
-執行檢查：
-
-```sh
-cd app
-bun run check
-```
-
-建置安裝檔（Windows NSIS，免系統管理員）：
-
-```sh
-cd app
-bun run tauri build
+bun run tauri dev     # 開發模式執行桌面程式
+bun run dev           # 只在瀏覽器預覽介面，使用錄好的範例課程，不需要 Claude
+bun run check         # 執行檢查
+bun run tauri build   # 建置安裝檔
 ```
 
 ## 發佈新版
