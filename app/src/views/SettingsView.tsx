@@ -1,3 +1,4 @@
+import author from '../assets/author.png';
 import { useState } from 'react';
 import { api } from '../api';
 import { Icon } from '../icons';
@@ -110,9 +111,9 @@ export function SettingsView({ settings, update, claude, onRecheck, onShowShortc
             )}
             <div className="row one">
               <div className="author">
-                <img src={`https://github.com/${GITHUB}.png?size=96`} alt="" width={36} height={36} />
+                <img src={author} alt="" width={36} height={36} />
                 <b>{GITHUB}</b>
-                <button type="button" className="go" onClick={() => api.openLink(`https://github.com/${GITHUB}`).catch((e) => console.error('open link failed', e))}>前往<Icon.out /></button>
+                <button type="button" className="btn" onClick={() => api.openLink(`https://github.com/${GITHUB}`).catch((e) => console.error('open link failed', e))}><Icon.out />GitHub</button>
               </div>
             </div>
           </div>
