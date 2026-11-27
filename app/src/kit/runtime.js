@@ -3,7 +3,7 @@
 //   - steps:     U.onStep((index, animate) => ...), called for step 0 on load and on every change
 //   - motion:    U.tween(ms, t => ...), U.lerp, U.ease; a new step finishes running tweens first
 //   - drawing:   U.svg, U.el, U.text, U.icon, U.iconHTML, U.arrow
-//   - visuals:   U.mount(kind, spec, steps) for chart, diagram, timeline, compare, points, passage,
+//   - visuals:   U.mount(kind, spec, steps) for chart, diagram, architecture, timeline, compare, points, passage,
 //                code, quiz; each element revealed and focused by the steps' "reveal" and "focus" ids
 // Errors are reported to the host as { type: 'widget-error', message }.
 /* eslint-disable */
@@ -176,6 +176,34 @@
   .u-edge.u-hover-rel path.u-shaft{fill:none;stroke-width:2}
   .u-edge.u-hover-dim{opacity:.2!important}
   @keyframes u-dash-flow{from{stroke-dashoffset:20}to{stroke-dashoffset:0}}
+  .u-pulse{fill:var(--acc);opacity:0;transition:opacity .3s;pointer-events:none}
+  .u-edge.u-focus .u-pulse{opacity:1}
+  .u-instant .u-pulse{transition:none}
+  /* node shapes: flowchart decision, input/output, data store, start/end */
+  .u-node.term{border-radius:999px;padding-left:18px;padding-right:18px}
+  .u-node.sh{background:none;box-shadow:none!important;justify-content:center;text-align:center}
+  .u-node.sh>.u-shape{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:0;transition:filter .3s}
+  .u-node.sh>.u-shape>*{fill:var(--raise,var(--bg));stroke:var(--line-2,var(--line));stroke-width:1.1;vector-effect:non-scaling-stroke;transition:stroke .3s,fill .3s}
+  .u-node.sh>.u-shape>.lid{fill:none}
+  .u-node.sh>:not(.u-shape){position:relative;z-index:1}
+  .u-node.sh.u-focus>.u-shape>*{stroke:var(--acc);stroke-width:1.6}
+  .u-node.sh.u-focus>.u-shape>:not(.lid){fill:color-mix(in srgb,var(--acc-soft) 70%,var(--raise,var(--bg)))}
+  .u-node.sh.u-focus>.u-shape{filter:drop-shadow(0 6px 12px color-mix(in srgb,var(--acc) 30%,transparent))}
+  .u-node.sh:hover>.u-shape{filter:drop-shadow(0 6px 12px rgb(16 32 40 / .16))}
+  .u-node.decision{padding:18px 30px;min-width:120px;min-height:66px}
+  .u-node.io{padding:10px 26px}
+  .u-node.store{padding:17px 16px 11px}
+  /* architecture */
+  .u-grp{position:absolute;border-radius:14px;box-sizing:border-box;background:color-mix(in srgb,var(--sub) 65%,transparent);box-shadow:inset 0 0 0 1px var(--line)}
+  .u-grp.u-hid{transform:scale(.985)}
+  .u-grp-h{position:absolute;left:12px;top:7px;right:12px;display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.2;color:var(--fg-3);white-space:nowrap;overflow:hidden}
+  .u-grp-h b{font-weight:600;color:var(--fg-2);letter-spacing:.02em}
+  .u-grp-h small{font-size:11.5px;color:var(--fg-3);overflow:hidden;text-overflow:ellipsis}
+  .u-grp.u-focus{background:color-mix(in srgb,var(--acc-soft) 60%,transparent);box-shadow:inset 0 0 0 1.5px var(--acc)}
+  .u-grp.u-focus .u-grp-h,.u-grp.u-focus .u-grp-h b{color:var(--acc-ink,var(--acc))}
+  .u-node.ext{background:transparent;box-shadow:none;outline:1.2px dashed var(--fg-3);outline-offset:-1px}
+  .u-node.ext.u-focus{outline-color:var(--acc);box-shadow:none}
+  .u-arch .u-node{font-size:13.5px}
   /* chart */
   .u-ch{flex:1;min-height:0;position:relative}
   .u-legend{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-2)}
@@ -599,6 +627,119 @@
     return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
   }
 
+  // ---------- node graphs: diagram (flowcharts too) and architecture ----------
+  /** Outlines for node shapes other than the card, drawn in a 100 x 100 box stretched to the node. */
+  const SHAPES = {
+    decision: '<polygon points="50,1 99,50 50,99 1,50"/>',
+    io: '<polygon points="13,1 99,1 87,99 1,99"/>',
+    store: '<path d="M1 13C1-3 99-3 99 13V87C99 103 1 103 1 87Z"/><path class="lid" d="M1 13C1 29 99 29 99 13"/>',
+  };
+  function nodeEl(n, vertical, extra) {
+    const shape = SHAPES[n.shape] ? n.shape : '';
+    const cls = `u-node u-card${vertical ? ' v' : ''}${shape ? ` sh ${shape}` : ''}${n.shape === 'terminal' ? ' term' : ''}${extra || ''}`;
+    const bg = shape ? `<svg class="u-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${SHAPES[shape]}</svg>` : '';
+    return h('div', cls, `${bg}${n.icon ? U.iconHTML(n.icon, vertical ? 26 : 22) : ''}<span><b>${md(n.label)}</b>${n.text ? `<small>${md(n.text)}</small>` : ''}</span>`);
+  }
+  /**
+   * Steps where an element without its own "reveal" appears with the elements it depends on (an
+   * edge with its two ends, a node with its group), so nothing floats before what it belongs to.
+   * `deps` is [id, parentIds] in dependency order.
+   */
+  function inherit(steps, deps) {
+    const out = (steps || []).map((s) => ({ ...s, reveal: [...((s && s.reveal) || [])] }));
+    const firstAt = {};
+    out.forEach((s, i) => s.reveal.forEach((id) => { if (!(id in firstAt)) firstAt[id] = i; }));
+    deps.forEach(([id, parents]) => {
+      if (id in firstAt) return;
+      const k = Math.max(-1, ...parents.map((p) => (p in firstAt ? firstAt[p] : -1)));
+      if (k >= 0 && out[k]) { out[k].reveal.push(id); firstAt[id] = k; }
+    });
+    return out;
+  }
+  /** Keeps every node inside the box. */
+  function clampNodes(box, els, W, H) {
+    const b = box.getBoundingClientRect();
+    for (const id in els) {
+      const r = els[id].getBoundingClientRect();
+      const l = r.left - b.left, t = r.top - b.top;
+      if (l < 0) els[id].style.left = `${parseFloat(els[id].style.left) - l}px`;
+      if (l + r.width > W) els[id].style.left = `${parseFloat(els[id].style.left) - (l + r.width - W)}px`;
+      if (t < 0) els[id].style.top = `${parseFloat(els[id].style.top) - t}px`;
+      if (t + r.height > H) els[id].style.top = `${parseFloat(els[id].style.top) - (t + r.height - H)}px`;
+    }
+  }
+  /** Draws the edges between placed nodes; `bendOf(e, a, b)` may curve one. Returns [{ e, g }]. */
+  function drawEdges(svg, box, edges, els, shapes, reg, bendOf) {
+    const b0 = box.getBoundingClientRect();
+    const geo = (id) => { const r = els[id].getBoundingClientRect(); return { x: r.left - b0.left + r.width / 2, y: r.top - b0.top + r.height / 2, w: r.width / 2 + 6, h: r.height / 2 + 6, diamond: shapes[id] === 'decision' }; };
+    const clip = (c, tx, ty) => {
+      const dx = tx - c.x, dy = ty - c.y;
+      const k = c.diamond
+        ? 1 / Math.max(1e-6, Math.abs(dx) / c.w + Math.abs(dy) / c.h)
+        : Math.min(Math.abs(dx) > 1e-6 ? c.w / Math.abs(dx) : Infinity, Math.abs(dy) > 1e-6 ? c.h / Math.abs(dy) : Infinity);
+      return [c.x + dx * k, c.y + dy * k];
+    };
+    const list = [];
+    edges.forEach((e) => {
+      if (!els[e.from] || !els[e.to]) return;
+      const a = geo(e.from), b = geo(e.to);
+      const [x1, y1] = clip(a, b.x, b.y), [x2, y2] = clip(b, a.x, a.y);
+      const g = U.arrow(svg, x1, y1, x2, y2, { bend: bendOf(e, a, b), dashed: e.dashed, both: e.both, class: 'u-edge' });
+      const len = g.shaft && g.shaft.getTotalLength ? Math.ceil(g.shaft.getTotalLength()) : 0;
+      if (len > 0) g.dataset.drawLen = String(len);
+      // a dot that runs along the edge while it is in focus: what flows, and which way
+      const dot = U.el(g, 'circle', { r: 3.6, class: 'u-pulse' });
+      U.el(dot, 'animateMotion', { dur: `${Math.max(0.9, Math.min(2.4, len / 160)).toFixed(2)}s`, repeatCount: 'indefinite', path: g.shaft.getAttribute('d') });
+      if (e.label) {
+        const t = U.text(g, g.mid.x, g.mid.y, e.label, { anchor: 'middle', class: 'u-elabel' });
+        const bb = t.getBBox();
+        const bg = U.el(g, 'rect', { x: bb.x - 6, y: bb.y - 2.5, width: bb.width + 12, height: bb.height + 5, rx: 6, fill: 'var(--bg)', stroke: 'var(--line)', 'stroke-width': 0.8 });
+        g.insertBefore(bg, t);
+      }
+      put(reg, e.id, g);
+      list.push({ e, g });
+    });
+    return list;
+  }
+  /** Hovering a node lights up its edges and neighbours. */
+  function hoverLinks(els, edgeEls) {
+    for (const nid in els) {
+      const el = els[nid];
+      el.addEventListener('mouseenter', () => {
+        const adj = new Set([nid]);
+        edgeEls.forEach(({ e, g }) => {
+          const rel = e.from === nid || e.to === nid;
+          if (rel) { adj.add(e.from); adj.add(e.to); }
+          g.classList.toggle('u-hover-rel', rel);
+          g.classList.toggle('u-hover-dim', !rel);
+        });
+        for (const id in els) {
+          els[id].classList.toggle('u-hover-rel', adj.has(id));
+          els[id].classList.toggle('u-hover-dim', !adj.has(id));
+        }
+      });
+      el.addEventListener('mouseleave', () => {
+        edgeEls.forEach(({ g }) => g.classList.remove('u-hover-rel', 'u-hover-dim'));
+        for (const id in els) els[id].classList.remove('u-hover-rel', 'u-hover-dim');
+      });
+    }
+  }
+  /** Draws the visible edges again, for replay. */
+  function redraw(edgeEls) {
+    document.documentElement.classList.remove('u-instant');
+    edgeEls.forEach(({ g }) => {
+      if (!g.classList.contains('u-hid') && g.dataset.drawLen && g.shaft && !g.shaft.classList.contains('u-dash')) {
+        const len = g.dataset.drawLen;
+        g.shaft.style.transition = 'none';
+        g.shaft.style.strokeDasharray = len;
+        g.shaft.style.strokeDashoffset = len;
+        g.shaft.getBoundingClientRect();
+        g.shaft.style.transition = '';
+        g.shaft.style.strokeDashoffset = '0';
+      }
+    });
+  }
+
   // ---------- diagram ----------
   function diagram(root, spec, steps) {
     const nodes = spec.nodes || [], edges = (spec.edges || []).map((e) => ({ ...e, id: e.id || `${e.from}>${e.to}` }));
@@ -609,8 +750,11 @@
     const byId = {};
     nodes.forEach((n) => (byId[n.id] = n));
     edges.forEach((e) => { if (!byId[e.from] || !byId[e.to]) report(`edge ${e.id} joins a node that does not exist`); });
+    const shapes = {};
+    nodes.forEach((n) => (shapes[n.id] = n.shape));
+    const eff = inherit(steps, edges.map((e) => [e.id, [e.from, e.to]]));
     let apply = () => {};
-    let reanimate = () => {};
+    let edgeEls = [];
     sized(box, (W, H) => {
       box.innerHTML = '';
       const reg = {};
@@ -618,91 +762,143 @@
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
       const { pos, maxW } = place(nodes, edges, layout, W, H);
       const els = {};
-      const edgeEls = [];
       nodes.forEach((n) => {
         const p = pos[n.id];
-        const vertical = !!n.icon && (layout === 'down' || layout === 'tree' || layout === 'hub' || layout === 'cycle' || maxW < 150);
-        const d = h('div', `u-node u-card${vertical ? ' v' : ''}`, `${n.icon ? U.iconHTML(n.icon, vertical ? 26 : 22) : ''}<span><b>${md(n.label)}</b>${n.text ? `<small>${md(n.text)}</small>` : ''}</span>`);
+        const vertical = !!n.icon && n.shape !== 'decision' && (layout === 'down' || layout === 'tree' || layout === 'hub' || layout === 'cycle' || maxW < 150);
+        const d = nodeEl(n, vertical);
         d.style.left = `${p.x}px`;
         d.style.top = `${p.y}px`;
-        d.style.maxWidth = `${maxW}px`;
+        d.style.maxWidth = `${n.shape === 'decision' ? maxW * 1.25 : maxW}px`;
         box.appendChild(d);
         els[n.id] = d;
         put(reg, n.id, d);
       });
-      for (const id in els) {
-        const r = els[id].getBoundingClientRect(), b = box.getBoundingClientRect();
-        const l = r.left - b.left, t = r.top - b.top;
-        if (l < 0) els[id].style.left = `${parseFloat(els[id].style.left) - l}px`;
-        if (l + r.width > W) els[id].style.left = `${parseFloat(els[id].style.left) - (l + r.width - W)}px`;
-        if (t < 0) els[id].style.top = `${parseFloat(els[id].style.top) - t}px`;
-        if (t + r.height > H) els[id].style.top = `${parseFloat(els[id].style.top) - (t + r.height - H)}px`;
-      }
-      const b0 = box.getBoundingClientRect();
-      const rect = (id) => { const r = els[id].getBoundingClientRect(); return { x: r.left - b0.left + r.width / 2, y: r.top - b0.top + r.height / 2, w: r.width / 2 + 6, h: r.height / 2 + 6 }; };
-      const clip = (c, tx, ty) => {
-        const dx = tx - c.x, dy = ty - c.y;
-        const k = Math.min(Math.abs(dx) > 1e-6 ? c.w / Math.abs(dx) : Infinity, Math.abs(dy) > 1e-6 ? c.h / Math.abs(dy) : Infinity);
-        return [c.x + dx * k, c.y + dy * k];
-      };
-      edges.forEach((e) => {
-        if (!els[e.from] || !els[e.to]) return;
-        const a = rect(e.from), b = rect(e.to);
-        const back = edges.some((o) => o.from === e.to && o.to === e.from);
-        const bend = e.bend != null ? e.bend : layout === 'cycle' ? 0.18 : back ? 0.14 : 0;
-        const [x1, y1] = clip(a, b.x, b.y), [x2, y2] = clip(b, a.x, a.y);
-        const g = U.arrow(svg, x1, y1, x2, y2, { bend, dashed: e.dashed, both: e.both, class: 'u-edge' });
-        const len = g.shaft && g.shaft.getTotalLength ? Math.ceil(g.shaft.getTotalLength()) : 0;
-        if (len > 0) g.dataset.drawLen = String(len);
-        if (e.label) {
-          const t = U.text(g, g.mid.x, g.mid.y, e.label, { anchor: 'middle', class: 'u-elabel' });
-          const bb = t.getBBox();
-          const bg = U.el(g, 'rect', { x: bb.x - 6, y: bb.y - 2.5, width: bb.width + 12, height: bb.height + 5, rx: 6, fill: 'var(--bg)', stroke: 'var(--line)', 'stroke-width': 0.8 });
-          g.insertBefore(bg, t);
-        }
-        put(reg, e.id, g);
-        edgeEls.push({ e, g });
+      clampNodes(box, els, W, H);
+      edgeEls = drawEdges(svg, box, edges, els, shapes, reg, (e) => {
+        if (e.bend != null) return e.bend;
+        if (layout === 'cycle') return 0.18;
+        return edges.some((o) => o.from === e.to && o.to === e.from) ? 0.14 : 0;
       });
-      // interactive node hover highlights connected edges and neighbours
-      nodes.forEach((n) => {
-        const el = els[n.id];
-        el.addEventListener('mouseenter', () => {
-          const adj = new Set([n.id]);
-          edgeEls.forEach(({ e, g }) => {
-            const rel = e.from === n.id || e.to === n.id;
-            if (rel) { adj.add(e.from); adj.add(e.to); }
-            g.classList.toggle('u-hover-rel', rel);
-            g.classList.toggle('u-hover-dim', !rel);
-          });
-          for (const id in els) {
-            els[id].classList.toggle('u-hover-rel', adj.has(id));
-            els[id].classList.toggle('u-hover-dim', !adj.has(id));
-          }
-        });
-        el.addEventListener('mouseleave', () => {
-          edgeEls.forEach(({ g }) => { g.classList.remove('u-hover-rel', 'u-hover-dim'); });
-          for (const id in els) els[id].classList.remove('u-hover-rel', 'u-hover-dim');
-        });
-      });
-      reanimate = () => {
-        document.documentElement.classList.remove('u-instant');
-        edgeEls.forEach(({ g }) => {
-          if (!g.classList.contains('u-hid') && g.dataset.drawLen && g.shaft && !g.shaft.classList.contains('u-dash')) {
-            const len = g.dataset.drawLen;
-            g.shaft.style.transition = 'none';
-            g.shaft.style.strokeDasharray = len;
-            g.shaft.style.strokeDashoffset = len;
-            g.shaft.getBoundingClientRect();
-            g.shaft.style.transition = '';
-            g.shaft.style.strokeDashoffset = '0';
-          }
-        });
-      };
+      hoverLinks(els, edgeEls);
       missing(reg, steps);
-      apply = stepper(reg, steps);
+      apply = stepper(reg, eff);
       apply(Math.max(0, U.step));
     });
-    replayHandlers.push((idx) => { reanimate(); apply(idx); });
+    replayHandlers.push((idx) => { redraw(edgeEls); apply(idx); });
+    return (i) => apply(i);
+  }
+
+  // ---------- architecture ----------
+  /** The icon (and shape) a component kind gets unless it names its own. */
+  const ARCH_ICON = {
+    user: 'user', client: 'monitor', mobile: 'smartphone', service: 'server', api: 'workflow', function: 'code',
+    module: 'package', file: 'file-code', doc: 'file-text', db: 'database', cache: 'zap', queue: 'inbox',
+    storage: 'hard-drive', external: 'cloud', process: 'cpu', tool: 'terminal',
+  };
+  /**
+   * A system drawn as groups (layers, tiers, packages, processes) holding components, joined by
+   * labelled connections. Groups stack top to bottom, or sit side by side with direction "right".
+   */
+  function architecture(root, spec, steps) {
+    const groups = spec.groups || [];
+    const nodes = (spec.nodes || []).map((n) => ({ ...n, icon: n.icon || ARCH_ICON[n.kind], shape: n.shape || (n.kind === 'db' ? 'store' : undefined) }));
+    const edges = (spec.edges || []).map((e) => ({ ...e, id: e.id || `${e.from}>${e.to}` }));
+    const across = spec.direction === 'right';
+    if (spec.title) root.appendChild(h('div', 'u-title', esc(spec.title)));
+    const box = h('div', 'u-dg u-arch');
+    root.appendChild(box);
+    const byId = {};
+    nodes.forEach((n) => (byId[n.id] = n));
+    const gids = new Set(groups.map((g) => g.id));
+    nodes.forEach((n) => { if (n.group && !gids.has(n.group)) report(`node ${n.id} names group "${n.group}", which does not exist`); });
+    edges.forEach((e) => { if (!byId[e.from] || !byId[e.to]) report(`edge ${e.id} joins a node that does not exist`); });
+    const groupOf = (id) => (byId[id] && gids.has(byId[id].group) ? byId[id].group : null);
+    // components outside every group (a user, an outside service) get a band of their own, first
+    const loose = nodes.filter((n) => !groupOf(n.id));
+    const bands = [...(loose.length ? [{ g: null, nodes: loose }] : []), ...groups.map((g) => ({ g, nodes: nodes.filter((n) => n.group === g.id) }))];
+    // order each band toward the components it connects to in earlier bands, keeping some of the written order
+    const slot = {};
+    bands.forEach((b) => {
+      const at = (k) => (b.nodes.length === 1 ? 0.5 : k / (b.nodes.length - 1));
+      const keyed = b.nodes.map((n, k) => {
+        const nb = edges.filter((e) => e.from === n.id || e.to === n.id).map((e) => (e.from === n.id ? e.to : e.from)).filter((o) => o in slot);
+        return { n, k: nb.length ? (nb.reduce((s, o) => s + slot[o], 0) / nb.length) * 0.6 + at(k) * 0.4 : at(k) };
+      });
+      keyed.sort((p, q) => p.k - q.k);
+      b.nodes = keyed.map((x) => x.n);
+      b.nodes.forEach((n, k) => (slot[n.id] = at(k)));
+    });
+    const band = {};
+    bands.forEach((b, i) => b.nodes.forEach((n, k) => (band[n.id] = { i, k })));
+    const shapes = {};
+    nodes.forEach((n) => (shapes[n.id] = n.shape));
+    const eff = inherit(steps, [
+      ...nodes.filter((n) => groupOf(n.id)).map((n) => [n.id, [n.group]]),
+      ...edges.map((e) => [e.id, [e.from, e.to]]),
+    ]);
+    let apply = () => {};
+    let edgeEls = [];
+    sized(box, (W, H) => {
+      box.innerHTML = '';
+      const reg = {};
+      const B = Math.max(1, bands.length), gap = across ? 16 : 12, head = 28, pad = 2;
+      const rects = bands.map((_, i) => {
+        if (across) { const bw = (W - 2 * pad - (B - 1) * gap) / B; return { x: pad + i * (bw + gap), y: pad, w: bw, h: H - 2 * pad }; }
+        const bh = (H - 2 * pad - (B - 1) * gap) / B;
+        return { x: pad, y: pad + i * (bh + gap), w: W - 2 * pad, h: bh };
+      });
+      const grpEls = {};
+      bands.forEach((b, i) => {
+        if (!b.g) return;
+        const r = rects[i];
+        const d = h('div', 'u-grp', `<span class="u-grp-h">${b.g.icon ? U.iconHTML(b.g.icon, 14) : ''}<b>${md(b.g.label)}</b>${b.g.text ? `<small>${md(b.g.text)}</small>` : ''}</span>`);
+        Object.assign(d.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+        box.appendChild(d);
+        grpEls[b.g.id] = d;
+        put(reg, b.g.id, d);
+      });
+      const svg = U.svg(W, H, box);
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      const els = {};
+      bands.forEach((b, i) => {
+        const r = rects[i], n = b.nodes.length, top = b.g ? head : 0;
+        b.nodes.forEach((nd, k) => {
+          let x, y, maxW;
+          if (across) { const ch = (r.h - top) / n; x = r.x + r.w / 2; y = r.y + top + ch * (k + 0.5); maxW = Math.min(210, r.w - 20); }
+          else { const cw = r.w / n; x = r.x + cw * (k + 0.5); y = r.y + top + (r.h - top - 6) / 2; maxW = Math.min(210, cw - 16); }
+          const d = nodeEl(nd, !!nd.icon && !across && maxW < 150, nd.kind === 'external' ? ' ext' : '');
+          d.style.left = `${x}px`;
+          d.style.top = `${y}px`;
+          d.style.maxWidth = `${Math.max(84, maxW)}px`;
+          box.appendChild(d);
+          els[nd.id] = d;
+          put(reg, nd.id, d);
+        });
+      });
+      clampNodes(box, els, W, H);
+      edgeEls = drawEdges(svg, box, edges, els, shapes, reg, (e, a, b) => {
+        if (e.bend != null) return e.bend;
+        const p = band[e.from], q = band[e.to];
+        // within one band, skipping over a neighbour: arc around it
+        if (p && q && p.i === q.i && Math.abs(p.k - q.k) > 1) return (across ? (b.y > a.y ? 1 : -1) : (b.x > a.x ? 1 : -1)) * 0.22;
+        return edges.some((o) => o.from === e.to && o.to === e.from) ? 0.14 : 0;
+      });
+      hoverLinks(els, edgeEls);
+      missing(reg, steps);
+      apply = stepper(reg, eff, (_, focus) => {
+        // a focused group keeps its own components and connections lit; a focused component keeps its group's frame
+        focus.forEach((id) => {
+          if (grpEls[id]) {
+            nodes.forEach((n) => { if (groupOf(n.id) === id && els[n.id]) els[n.id].classList.remove('u-dim'); });
+            edgeEls.forEach(({ e, g }) => { if (groupOf(e.from) === id && groupOf(e.to) === id) g.classList.remove('u-dim'); });
+          }
+          const g = groupOf(id);
+          if (g && grpEls[g]) grpEls[g].classList.remove('u-dim');
+        });
+      });
+      apply(Math.max(0, U.step));
+    });
+    replayHandlers.push((idx) => { redraw(edgeEls); apply(idx); });
     return (i) => apply(i);
   }
   function place(nodes, edges, layout, W, H) {
@@ -1210,7 +1406,7 @@
     return apply;
   }
 
-  const KINDS = { chart, diagram, timeline, compare, points, passage, code, quiz };
+  const KINDS = { chart, diagram, architecture, timeline, compare, points, passage, code, quiz };
   /** Mounts a declarative visual into `parent` (default: the whole frame) and drives it by the steps. */
   U.mount = (kind, spec, steps, parent) => {
     const make = KINDS[kind];

@@ -1,7 +1,7 @@
 // The answer contract shared by the sidecar (what Claude writes) and the app (what it plays).
 // Keep in sync with src/lesson.ts.
 import { ICON_NAMES } from '../src/kit/icons.ts';
-import { SUBJECTS } from '../src/lesson.ts';
+import { COMPONENT_KINDS, NODE_SHAPES, SUBJECTS } from '../src/lesson.ts';
 
 const expr = { type: ['string', 'number'], description: 'number or expression in x and parameter names' } as const;
 const pair = { type: 'array', items: expr, minItems: 2, maxItems: 2 } as const;
@@ -82,7 +82,7 @@ const STEP = {
       description: 'plot only: parameters to animate to when this step is shown',
       items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } },
     },
-    reveal: { type: 'array', items: { type: 'string' }, description: 'kit visuals (chart, diagram, timeline, compare, points, passage): ids that appear at this step and stay. Ids never revealed are visible from the start.' },
+    reveal: { type: 'array', items: { type: 'string' }, description: 'kit visuals (chart, diagram, architecture, timeline, compare, points, passage): ids that appear at this step and stay. Ids never revealed are visible from the start.' },
     focus: { type: 'array', items: { type: 'string' }, description: 'kit visuals: ids emphasised while this step is shown; everything else dims' },
   },
 } as const;
@@ -101,12 +101,29 @@ const CHART = obj(['type', 'labels', 'series'], {
   series: { type: 'array', minItems: 1, items: obj(['id', 'values'], { id, name: { type: 'string' }, values: { type: 'array', items: { type: 'number' } } }) },
   marks: { type: 'array', items: obj(['id', 'label', 'text'], { id, label: { type: 'string', description: 'the category it points at' }, series: { type: 'string' }, text: { type: 'string', description: 'a short callout' } }) },
 }, 'chart only');
+const shape = { type: 'string', enum: NODE_SHAPES, description: 'box (default card), terminal (start/end), decision (a yes/no branch), io (input/output), store (data at rest)' } as const;
+const EDGES = { type: 'array', items: obj(['from', 'to'], { id: { type: 'string', description: 'default "from>to"' }, from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string' }, dashed: { type: 'boolean' }, both: { type: 'boolean', description: 'arrowheads at both ends' } }) } as const;
 const DIAGRAM = obj(['layout', 'nodes', 'edges'], {
   layout: { type: 'string', enum: ['flow', 'down', 'tree', 'cycle', 'hub', 'free'] },
   title: { type: 'string' },
-  nodes: { type: 'array', minItems: 1, items: obj(['id', 'label'], { id, label: { type: 'string' }, text: { type: 'string', description: 'one short line under the label' }, icon, x: { type: 'number', description: 'free layout: 0-100' }, y: { type: 'number', description: 'free layout: 0-100' } }) },
-  edges: { type: 'array', items: obj(['from', 'to'], { id: { type: 'string', description: 'default "from>to"' }, from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string' }, dashed: { type: 'boolean' }, both: { type: 'boolean', description: 'arrowheads at both ends' } }) },
+  nodes: { type: 'array', minItems: 1, items: obj(['id', 'label'], { id, label: { type: 'string' }, text: { type: 'string', description: 'one short line under the label' }, icon, shape, x: { type: 'number', description: 'free layout: 0-100' }, y: { type: 'number', description: 'free layout: 0-100' } }) },
+  edges: EDGES,
 }, 'diagram only');
+const ARCHITECTURE = obj(['nodes', 'edges'], {
+  title: { type: 'string' },
+  direction: { type: 'string', enum: ['down', 'right'], description: 'down: groups stacked top to bottom (default); right: groups side by side' },
+  groups: { type: 'array', maxItems: 5, items: obj(['id', 'label'], { id, label: { type: 'string', description: 'e.g. "前端", "src/sidecar", "資料層"' }, text: { type: 'string', description: 'a few words on what the group is for' }, icon }) },
+  nodes: {
+    type: 'array', minItems: 1,
+    items: obj(['id', 'label'], {
+      id, label: { type: 'string' }, text: { type: 'string', description: 'one short line: its job, or a file name' },
+      group: { type: 'string', description: 'the group id it sits in; omit for something outside every group (a user, an outside service)' },
+      kind: { type: 'string', enum: COMPONENT_KINDS, description: 'picks its icon (db also its shape) unless icon is given' },
+      icon, shape,
+    }),
+  },
+  edges: EDGES,
+}, 'architecture only');
 const TIMELINE = obj(['events'], {
   title: { type: 'string' },
   events: { type: 'array', minItems: 2, items: obj(['id', 'when', 'title'], { id, when: { type: 'string', description: 'as shown, e.g. "1895", "西元前 221 年"' }, at: { type: 'number', description: 'the year as a number, for proportional spacing' }, title: { type: 'string' }, text: { type: 'string' }, icon }) },
@@ -161,11 +178,11 @@ const WIDGET = {
   additionalProperties: false,
   required: ['kind'],
   properties: {
-    kind: { type: 'string', enum: ['plot', 'chart', 'diagram', 'timeline', 'compare', 'points', 'passage', 'code', 'quiz', 'html', 'bubble-sort'] },
+    kind: { type: 'string', enum: ['plot', 'chart', 'diagram', 'architecture', 'timeline', 'compare', 'points', 'passage', 'code', 'quiz', 'html', 'bubble-sort'] },
     values: { type: 'array', items: { type: 'integer', minimum: 1, maximum: 99 }, minItems: 3, maxItems: 8, description: 'bubble-sort only: the list to sort' },
     plot: PLOT,
     html: { type: 'string', description: 'html only: the self-contained widget, see the system prompt' },
-    chart: CHART, diagram: DIAGRAM, timeline: TIMELINE, compare: COMPARE, points: POINTS, passage: PASSAGE, code: CODE, quiz: QUIZ,
+    chart: CHART, diagram: DIAGRAM, architecture: ARCHITECTURE, timeline: TIMELINE, compare: COMPARE, points: POINTS, passage: PASSAGE, code: CODE, quiz: QUIZ,
   },
 } as const;
 
@@ -243,7 +260,7 @@ When the learner wants a whole course, or the topic plainly needs several chapte
 # Answer modes
 Choose how to answer with "mode", by what teaches best, not by what is shortest. "ask" and "course" are described above; after a new lesson, answer with one of these:
 - "chapter": a new chapter with its own visual: title, subject, crumbs, steps, task, suggestions, widget. The first answer of a lesson is always a chapter. For a follow-up, open a chapter whenever a new picture would help: a worked problem, a new idea, a closer look at one part, an example from another angle. The title is yours to choose: short, names the idea.
-- "extend": more steps in the chapter the learner is reading, continuing its numbering, when the same picture, as it is, carries the answer well: steps (1-5), suggestions. Step indices continue after the chapter's last step. Plot and bubble-sort visuals play new steps with no change. Kit visuals (chart, diagram, timeline, compare, points, passage) can use "reveal" and "focus" on ids that already exist; if the new steps need new elements, send the whole updated "widget". An html visual needs "edits" (exact find/replace on its current html) that make it handle the new indices while still rendering the earlier ones. Send a whole "widget" (and "task") only when edits would not do.
+- "extend": more steps in the chapter the learner is reading, continuing its numbering, when the same picture, as it is, carries the answer well: steps (1-5), suggestions. Step indices continue after the chapter's last step. Plot and bubble-sort visuals play new steps with no change. Kit visuals (chart, diagram, architecture, timeline, compare, points, passage) can use "reveal" and "focus" on ids that already exist; if the new steps need new elements, send the whole updated "widget". An html visual needs "edits" (exact find/replace on its current html) that make it handle the new indices while still rendering the earlier ones. Send a whole "widget" (and "task") only when edits would not do.
 - "text": a reply in words only, for a short aside, a definition or a check of their thinking that no picture would improve: text, suggestions.
 
 The learner may ask while reading any chapter; the message says which. You can call read_chapter to see a chapter exactly as it is now (its steps and the full current visual, after earlier edits) before you continue or edit it. Call it whenever you are not sure what the current visual contains; never guess the html you edit. If the learner's message reports that a visual broke, call read_chapter, find the cause, and answer with "extend" carrying the repaired "widget" (or "edits") and one short step that says it is fixed.
@@ -259,13 +276,15 @@ Kit visuals share one step mechanism: every element has an id; a step's "reveal"
 
 1. "chart": data. type "bar" (compare categories; several series for groups), "stacked" (parts of a whole across categories), "line" (change over time), "pie" (shares of one whole, at most 6 slices). Ids: each series id, each label (a category or slice), each mark id. "marks" are short callouts pinned to a category, for the insight the learner should notice. Give a unit and a title with the source year when it matters.
 2. "diagram": ideas and how they connect. Nodes (label, optional short text and icon) joined by arrows (optional label, dashed for weaker or indirect links, both for two-way). layout "flow" (left to right: causes and effects, a process), "down" or "tree" (top to bottom: hierarchy, classification, derivation), "cycle" (a loop in node order: water cycle, business cycle, feedback), "hub" (first node in the middle, the rest around: a concept and its parts), "free" (x, y in 0-100). Edge ids default to "from>to". Keep it to about 3-9 nodes, labels of a few words.
-3. "timeline": events in order (when, title, optional text and icon; "at" the year as a number spaces them in proportion). "spans" mark a period between two events (a dynasty, a policy era).
-4. "compare": two to four things side by side over a few rows (systems, theories, organelles, writing styles). Ids: column ids, row ids, and "rowId.columnId" for one cell.
-5. "points": two to six key points, each a short title with one line and an icon, optionally around a "center" question: reasons, conditions, features, takeaways.
-6. "passage": a text to read closely: classical Chinese, a poem, an English sentence or paragraph, a document excerpt. Wrap each part a step points at as [[id|words]]; a "note" with the same id is shown while that part is in focus (a gloss, a grammar point, a rhetorical device). Keep the original wording exactly.
-7. "code": step-by-step code walkthrough for any algorithm, recursion, data structure or programming concept. Provide "lines" (array of source lines) and "states" (each with an "id", 1-based highlighted "lines", live "vars" map of string values, optional "output" and short "note"). Steps focus each state id in order so the learner watches execution and changing variables line by line.
-8. "quiz": interactive formative check when the learner asks to be quizzed, practices after a concept, or finishes a review chapter of a course. Provide 1-5 "questions" (each with "id", "prompt", 2-5 "options", 0-based "answer" indices, "explanation", and optional "hint"). Each step focuses one question id (or introduces a group) while the learner actually picks answers and checks them live.
-9. "plot": anything on a coordinate plane: functions and their parameters, slopes and derivatives, tangents, areas and integrals, Riemann sums, limits, sequences of points, vectors, linear transformations of a few vectors, trigonometry on the unit circle, projectile paths, coordinate geometry. Describe a scene:
+   A flowchart is a diagram too (layout "down" or "flow"): give nodes a "shape": "terminal" for start and end, "decision" for a yes/no question (its two outgoing edges labelled, e.g. 是／否), "io" for input or output, "store" for data kept somewhere; plain steps stay "box". An edge back to an earlier node draws a loop. Walk the learner through it one step or branch at a time with focus.
+3. "architecture": how a system or a project is built: its parts, where they live and how they talk. "groups" are the layers, tiers, processes or folders (前端／後端／資料層, src/ui, sidecar, 瀏覽器／伺服器); each node sits in one group (or none: a user, an outside service) and has a "kind" that gives it an icon: user, client, mobile, service, api, function, module, file, doc, db, cache, queue, storage, external, process, tool. Edges are the calls, requests, events or data between them, labelled with what flows (「HTTP 請求」「事件」「讀寫」); dashed for asynchronous or optional. Groups stack top to bottom, or side by side with direction "right" (a pipeline, a client and a server). Ids: group ids, node ids, edge ids ("from>to"). Reveal a group and its parts come with it; focus a group to talk about the whole layer, focus a chain of nodes and edges to follow one request through the system (a focused edge shows a dot moving along it). Keep it to about 3-12 components in 2-5 groups.
+4. "timeline": events in order (when, title, optional text and icon; "at" the year as a number spaces them in proportion). "spans" mark a period between two events (a dynasty, a policy era).
+5. "compare": two to four things side by side over a few rows (systems, theories, organelles, writing styles). Ids: column ids, row ids, and "rowId.columnId" for one cell.
+6. "points": two to six key points, each a short title with one line and an icon, optionally around a "center" question: reasons, conditions, features, takeaways.
+7. "passage": a text to read closely: classical Chinese, a poem, an English sentence or paragraph, a document excerpt. Wrap each part a step points at as [[id|words]]; a "note" with the same id is shown while that part is in focus (a gloss, a grammar point, a rhetorical device). Keep the original wording exactly.
+8. "code": step-by-step code walkthrough for any algorithm, recursion, data structure or programming concept. Provide "lines" (array of source lines) and "states" (each with an "id", 1-based highlighted "lines", live "vars" map of string values, optional "output" and short "note"). Steps focus each state id in order so the learner watches execution and changing variables line by line.
+9. "quiz": interactive formative check when the learner asks to be quizzed, practices after a concept, or finishes a review chapter of a course. Provide 1-5 "questions" (each with "id", "prompt", 2-5 "options", 0-based "answer" indices, "explanation", and optional "hint"). Each step focuses one question id (or introduces a group) while the learner actually picks answers and checks them live.
+10. "plot": anything on a coordinate plane: functions and their parameters, slopes and derivatives, tangents, areas and integrals, Riemann sums, limits, sequences of points, vectors, linear transformations of a few vectors, trigonometry on the unit circle, projectile paths, coordinate geometry. Describe a scene:
    - "x" and "y": the visible ranges. Pick them so everything important is inside with some margin.
    - "params": the numbers that change. Each step animates params with "set" (values tween smoothly), so motion comes from params: grow b to trace a curve or sweep an area, move "at" to slide a tangent, raise n to refine a Riemann sum, change a to reshape a parabola. Mark at most two params "slider": true for the learner to play with.
    - "items": function (expr in x, optional domain a..b, label), area (under expr from a to b), riemann (left rectangles of expr on a..b with n), tangent (to expr at "at"), point (x, y, optional "drag": a param name; then x must be that param and y usually the curve, e.g. x "p", y "p^2"), vector and segment (from, to), polygon (points), text (x, y, text).
@@ -273,8 +292,8 @@ Kit visuals share one step mechanism: every element has an id; a step's "reveal"
    - "color": "accent" for the one thing that matters now, "ink" for supporting objects, "muted" for references and ghosts. Use "dashed" for guides. Use "show" to reveal items at the step that introduces them.
    - "readouts": up to 4 live numbers under the plot (expressions in params), e.g. slope, area, the current x. They make the maths visible.
    - Never put "x" inside a readout or a point coordinate; only params.
-10. "bubble-sort": only for bubble sort or simple comparison sorting. Give "values" (3 to 8 small integers, usually reverse-ordered so every pass matters, e.g. [4, 3, 2, 1]). Every step gives "pass": how many full passes have been completed when that step is shown, from 0 to values.length - 1, never decreasing.
-11. "html": your own drawing, for anything the others cannot show: a physical setup that moves, a molecule or a reaction, a cell, a geometric proof by rearrangement, a circuit, a map sketch, an illustrated scene, or a kit visual combined with something custom. Write one self-contained HTML fragment in "html":
+11. "bubble-sort": only for bubble sort or simple comparison sorting. Give "values" (3 to 8 small integers, usually reverse-ordered so every pass matters, e.g. [4, 3, 2, 1]). Every step gives "pass": how many full passes have been completed when that step is shown, from 0 to values.length - 1, never decreasing.
+12. "html": your own drawing, for anything the others cannot show: a physical setup that moves, a molecule or a reaction, a cell, a geometric proof by rearrangement, a circuit, a map sketch, an illustrated scene, or a kit visual combined with something custom. Write one self-contained HTML fragment in "html":
    - A fragment, not a full document: <style>, markup and <script> only. No external URLs, fonts, images or libraries. No alert, prompt, localStorage, fetch or forms.
    - It fills its container (100% width and height, transparent background). Prefer one responsive <svg> with a viewBox of about 800 x 500, the stage's own shape; keep every element and label inside it with a 24-unit margin, so nothing is clipped. Labels at 14-18 units.
    - Colours only from the host's CSS variables: --fg (ink), --fg-2 (secondary text), --fg-3 (muted lines), --line (hairlines and grids), --sub (subtle fills), --raise (card fill), --bg (background), --acc (the one accent, for the thing that matters now), --acc-soft (accent tint fill), --done (finished/settled items). Font: inherit. Minimal and calm: thin strokes, one accent.

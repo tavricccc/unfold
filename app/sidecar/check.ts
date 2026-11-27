@@ -19,6 +19,11 @@ function kitIds(w: Widget): Set<string> | undefined {
       d.nodes.forEach((n) => add(n.id)); d.edges.forEach((e) => add(e.id ?? `${e.from}>${e.to}`));
       return ids;
     }
+    case 'architecture': {
+      const a = w.architecture!;
+      a.groups?.forEach((g) => add(g.id)); a.nodes.forEach((n) => add(n.id)); a.edges.forEach((e) => add(e.id ?? `${e.from}>${e.to}`));
+      return ids;
+    }
     case 'timeline': {
       const t = w.timeline!;
       t.events.forEach((e) => add(e.id)); t.spans?.forEach((s) => add(s.id));
@@ -82,6 +87,19 @@ export function problems(w: Widget, steps: Step[]): string[] {
   if (w.kind === 'diagram') {
     const nodes = new Set(w.diagram!.nodes.map((n) => n.id));
     w.diagram!.edges.forEach((e) => { if (!nodes.has(e.from) || !nodes.has(e.to)) out.push(`edge ${e.from}>${e.to} joins a node that does not exist`); });
+  }
+  if (w.kind === 'architecture') {
+    const a = w.architecture!;
+    const groups = new Set((a.groups ?? []).map((g) => g.id));
+    const nodes = new Set(a.nodes.map((n) => n.id));
+    a.nodes.forEach((n) => { if (n.group && !groups.has(n.group)) out.push(`node "${n.id}" sits in group "${n.group}", which does not exist`); });
+    a.edges.forEach((e) => { if (!nodes.has(e.from) || !nodes.has(e.to)) out.push(`edge ${e.from}>${e.to} joins a node that does not exist`); });
+    const seen = new Set<string>();
+    for (const id of [...groups, ...a.nodes.map((n) => n.id)]) { if (seen.has(id)) out.push(`id "${id}" is used twice`); seen.add(id); }
+  }
+  if (w.kind === 'diagram' || w.kind === 'architecture') {
+    const icons = (w.kind === 'diagram' ? w.diagram!.nodes : [...w.architecture!.nodes, ...(w.architecture!.groups ?? [])]).map((n) => n.icon);
+    icons.forEach((ic) => { if (ic && !ICONS[ic]) out.push(`unknown icon "${ic}"`); });
   }
   if (w.kind === 'timeline') {
     const ev = new Set(w.timeline!.events.map((e) => e.id));

@@ -68,5 +68,34 @@ const badQuizErrs = problems(badQuiz, [{ text: 'a', focus: ['q1'] }]);
 assert(badQuizErrs.some((e) => e.includes('at least 2 options')), 'should catch <2 options');
 assert(badQuizErrs.some((e) => e.includes('out of range')), 'should catch out-of-range answer index');
 
+// valid architecture widget: groups, a loose user, edges and a flowchart shape
+const arch: Widget = {
+  kind: 'architecture',
+  architecture: {
+    groups: [{ id: 'ui', label: '前端' }, { id: 'be', label: '後端' }],
+    nodes: [
+      { id: 'u', label: '使用者', kind: 'user' },
+      { id: 'web', label: 'React', group: 'ui', kind: 'client' },
+      { id: 'api', label: 'API', group: 'be', kind: 'service' },
+      { id: 'db', label: '資料庫', group: 'be', kind: 'db' },
+    ],
+    edges: [{ from: 'u', to: 'web' }, { from: 'web', to: 'api', label: 'HTTP' }, { from: 'api', to: 'db', dashed: true }],
+  },
+};
+assert(problems(arch, [{ text: 'a', reveal: ['ui'] }, { text: 'b', focus: ['be', 'web>api'] }]).length === 0, 'valid architecture should pass');
+const badArch: Widget = {
+  kind: 'architecture',
+  architecture: {
+    groups: [{ id: 'ui', label: '前端' }],
+    nodes: [{ id: 'web', label: 'React', group: 'nope', icon: 'no-such-icon' }],
+    edges: [{ from: 'web', to: 'ghost' }],
+  },
+};
+const badArchErrs = problems(badArch, [{ text: 'a', focus: ['web>api'] }]);
+assert(badArchErrs.some((e) => e.includes('group "nope"')), 'should catch an unknown group');
+assert(badArchErrs.some((e) => e.includes('ghost')), 'should catch an edge to a missing node');
+assert(badArchErrs.some((e) => e.includes('no-such-icon')), 'should catch an unknown icon');
+assert(badArchErrs.some((e) => e.includes('web>api')), 'should catch an unknown step id');
+
 console.log(bad ? `${bad} failed` : 'kit checks ok');
 if (bad) process.exit(1);

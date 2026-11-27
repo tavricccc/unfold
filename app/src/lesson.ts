@@ -38,11 +38,26 @@ export interface ChartSpec {
   series: { id: string; name?: string; values: number[] }[];
   marks?: { id: string; label: string; series?: string; text: string }[];
 }
+/** box: a card (default); terminal: start or end; decision: a yes/no branch; io: input or output; store: data at rest */
+export const NODE_SHAPES = ['box', 'terminal', 'decision', 'io', 'store'] as const;
+export type NodeShape = typeof NODE_SHAPES[number];
+export const COMPONENT_KINDS = ['user', 'client', 'mobile', 'service', 'api', 'function', 'module', 'file', 'doc', 'db', 'cache', 'queue', 'storage', 'external', 'process', 'tool'] as const;
+export type ComponentKind = typeof COMPONENT_KINDS[number];
+export interface Edge { id?: string; from: string; to: string; label?: string; dashed?: boolean; both?: boolean }
 export interface DiagramSpec {
   layout: 'flow' | 'down' | 'tree' | 'cycle' | 'hub' | 'free';
   title?: string;
-  nodes: { id: string; label: string; text?: string; icon?: string; x?: number; y?: number }[];
-  edges: { id?: string; from: string; to: string; label?: string; dashed?: boolean; both?: boolean }[];
+  nodes: { id: string; label: string; text?: string; icon?: string; shape?: NodeShape; x?: number; y?: number }[];
+  edges: Edge[];
+}
+/** A system as groups (layers, tiers, packages) of components joined by connections. */
+export interface ArchitectureSpec {
+  title?: string;
+  /** down: groups stacked top to bottom (default); right: groups side by side */
+  direction?: 'down' | 'right';
+  groups?: { id: string; label: string; text?: string; icon?: string }[];
+  nodes: { id: string; label: string; text?: string; group?: string; kind?: ComponentKind; icon?: string; shape?: NodeShape }[];
+  edges: Edge[];
 }
 export interface TimelineSpec {
   title?: string;
@@ -92,7 +107,7 @@ export interface QuizSpec {
     hint?: string;
   }[];
 }
-export const KIT_KINDS = ['chart', 'diagram', 'timeline', 'compare', 'points', 'passage', 'code', 'quiz'] as const;
+export const KIT_KINDS = ['chart', 'diagram', 'architecture', 'timeline', 'compare', 'points', 'passage', 'code', 'quiz'] as const;
 export type KitKind = typeof KIT_KINDS[number];
 
 export type Expr = string | number;
@@ -134,6 +149,7 @@ export interface Widget {
   html?: string;
   chart?: ChartSpec;
   diagram?: DiagramSpec;
+  architecture?: ArchitectureSpec;
   timeline?: TimelineSpec;
   compare?: CompareSpec;
   points?: PointsSpec;
