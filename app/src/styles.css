@@ -715,6 +715,11 @@ h2.chap-t:hover .ren, .ren:focus-visible { opacity: 1; }
 }
 .sw-btn.on { background: var(--acc); }
 .sw-btn.on i { transform: translateX(18px); }
+.setup { display: flex; align-items: center; gap: 16px; margin: 22px 0 -6px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r, 12px); background: var(--danger-soft); }
+.setup-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--fg-2); }
+.setup-t b { font-size: 14px; color: var(--fg); font-weight: 600; }
+.setup-cmd { font-family: var(--mono); font-size: 12.5px; color: var(--fg); user-select: all; overflow-wrap: anywhere; }
+.setup-act { display: flex; gap: 8px; flex: none; }
 .conn { display: flex; align-items: center; gap: 12px; }
 .conn-t { flex: 1; min-width: 0; }
 .conn .ok { width: 32px; height: 32px; border-radius: 50%; background: var(--acc-soft); color: var(--acc-ink); display: grid; place-items: center; font-weight: 700; flex: none; }

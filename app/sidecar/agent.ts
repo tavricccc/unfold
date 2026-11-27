@@ -260,6 +260,7 @@ async function main() {
       },
     });
     for await (const m of q as AsyncIterable<any>) {
+      if (m.type === 'assistant' && m.error && ACCOUNT_ERRORS[m.error]) throw new AccountError(ACCOUNT_ERRORS[m.error]);
       if (m.type === 'system' && m.subtype === 'init') {
         if (m.model) model = m.model;
         if (m.session_id) { sid = m.session_id; emit({ type: 'session', id: m.session_id }); }
@@ -385,7 +386,7 @@ async function main() {
       } catch (e) {
         // A session Claude Code no longer has (or one that broke) starts over from the outline,
         // unless the learner already saw part of this answer.
-        if (shown.any) throw e;
+        if (shown.any || e instanceof AccountError) throw e;
         console.error(`resume failed, starting a new session: ${e instanceof Error ? e.message : e}`);
         setPhase('正在重新讀這一課…');
       }
@@ -418,7 +419,26 @@ async function main() {
   emit({ type: 'part', part: value.lesson ? { ...value, lesson: sourced(value.lesson) } : sourced(value), model, cost });
 }
 
+/** Problems with the learner's Claude account: retrying or a new session cannot fix them. */
+class AccountError extends Error {}
+const LOGIN = 'Claude Code 還沒登入：在終端機執行 claude，用 /login 登入後再試一次';
+const ACCOUNT_ERRORS: Record<string, string> = {
+  authentication_failed: LOGIN,
+  oauth_org_not_allowed: '這個 Claude 帳號的組織不允許使用 Claude Code',
+  account_on_hold: '這個 Claude 帳號目前被暫停',
+  verification_required: 'Claude 帳號需要先完成驗證：在終端機執行 claude 照提示操作',
+  billing_error: 'Claude 帳號的付款或用量有問題，請到 claude.ai 確認',
+};
+
+/** What the learner sees for a failure: account problems in plain words, anything else as it came. */
+function explain(e: unknown): string {
+  if (e instanceof AccountError) return e.message;
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/not logged in|please run \/login|invalid api key|authentication_failed|\b401\b/i.test(msg)) return LOGIN;
+  return msg;
+}
+
 main().catch((e) => {
-  emit({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+  emit({ type: 'error', message: explain(e) });
   process.exitCode = 1;
 });

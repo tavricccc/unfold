@@ -14,8 +14,11 @@ const TRY_SETS = [
 /** With a folder attached: questions about a project or a pile of documents. */
 const REF_TRY = ['這個專案的架構長怎樣？', '從啟動到畫面出來，程式怎麼跑？', '核心的原理是什麼？', '整理這些文件的重點'];
 
-export function Home({ lessons, settings, update, onAsk, open, onError }: {
+const INSTALL = 'irm https://claude.ai/install.ps1 | iex';
+
+export function Home({ lessons, settings, update, onAsk, open, onError, claude, onRecheck }: {
   lessons: LessonMeta[]; settings: Settings; update: (p: Partial<Settings>) => void;
+  claude: { ok: boolean; text: string }; onRecheck: () => void;
   /** refs: the folders attached to the new lesson */
   onAsk: (q: string, refs?: string[]) => void; open: (id: string) => void; onError: (msg: string) => void;
 }) {
@@ -72,6 +75,19 @@ export function Home({ lessons, settings, update, onAsk, open, onError }: {
           </svg>
           <h1>今天想<em>弄懂</em>什麼？</h1>
           <p className="lead">問一個問題，它會一步一步展開成一堂可以動手玩的課。</p>
+          {!claude.ok && (
+            <div className="setup" role="alert">
+              <div className="setup-t">
+                <b>先裝好 Claude Code</b>
+                <span>在 PowerShell 執行下面這行，裝好後跑一次 <code>claude</code> 登入</span>
+                <code className="setup-cmd">{INSTALL}</code>
+              </div>
+              <div className="setup-act">
+                <button type="button" className="btn" onClick={() => navigator.clipboard.writeText(INSTALL).catch(() => onError('沒辦法複製'))}>複製</button>
+                <button type="button" className="btn" onClick={onRecheck}><Icon.retry />重新檢查</button>
+              </div>
+            </div>
+          )}
           <Composer
             big autoFocus focusOnSlash onSubmit={ask}
             placeholder={refs.length ? '問這些資料：架構、原理、某份文件在講什麼…' : '一個問題、一個好奇、一個卡住的地方…'}

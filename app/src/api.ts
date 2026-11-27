@@ -34,6 +34,8 @@ export interface Api {
   deleteLesson(id: string): Promise<void>;
   cancelLesson(id: string): Promise<void>;
   claudeStatus(): Promise<string>;
+  /** a newer release, if one is published; install() downloads it, installs it and restarts */
+  checkUpdate(): Promise<{ version: string; install: () => Promise<void> } | null>;
   openLink(url: string): Promise<void>;
   onLessonEvent(cb: (e: LessonEvent) => void): () => void;
 }
@@ -71,6 +73,19 @@ function tauriApi(): Api {
     deleteLesson: (id) => call('delete_lesson', { id }),
     cancelLesson: (id) => call('cancel_lesson', { id }),
     claudeStatus: () => call('claude_status'),
+    async checkUpdate() {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const u = await check();
+      if (!u) return null;
+      return {
+        version: u.version,
+        async install() {
+          await u.downloadAndInstall();
+          const { relaunch } = await import('@tauri-apps/plugin-process');
+          await relaunch();
+        },
+      };
+    },
     openLink: (url) => call('open_link', { url }),
     onLessonEvent(cb) {
       let off: (() => void) | undefined;
@@ -441,6 +456,7 @@ function mockApi(): Api {
       emit({ id, type: 'error', message: '你停止了這次生成' });
     },
     async claudeStatus() { return 'preview'; },
+    async checkUpdate() { return null; },
     async pickFolders() { return ['C:\\Users\\demo\\projects\\unfold']; },
     async inspectRef(path) { return { path, name: path.split(/[\\/]/).filter(Boolean).pop() ?? path }; },
     onDrop() { return () => {}; },

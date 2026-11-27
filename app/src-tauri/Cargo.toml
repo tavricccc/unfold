@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A personal interactive tutor"
 authors = ["tavricccc"]
 license = "MIT"
-repository = ""
+repository = "https://github.com/tavricccc/unfold"
 edition = "2024"
 rust-version = "1.90"
 
@@ -24,3 +24,5 @@ log = "0.4"
 tauri = { version = "2.12.7", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2.14.1"
+tauri-plugin-process = "2.4.0"

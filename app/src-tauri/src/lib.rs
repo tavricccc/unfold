@@ -519,6 +519,8 @@ pub fn run() {
   tauri::Builder::default()
     .manage(Jobs::default())
     .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())
     .setup(|app| {
       // A lesson left "generating" by a previous run can never finish; mark it so the UI can offer a retry.

@@ -6,6 +6,8 @@ export interface ToastItem {
   text: string;
   tone?: 'info' | 'ok' | 'err';
   action?: { label: string; onClick: () => void };
+  /** stays until the learner acts on it or closes it */
+  sticky?: boolean;
 }
 
 export function ToastStack({ items, dismiss }: { items: ToastItem[]; dismiss: (id: number) => void }) {
@@ -22,10 +24,10 @@ function ToastRow({ item, dismiss }: { item: ToastItem; dismiss: (id: number) =>
   const ms = item.tone === 'err' ? 6000 : 3800;
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || item.sticky) return;
     const t = window.setTimeout(() => dismiss(item.id), ms);
     return () => window.clearTimeout(t);
-  }, [dismiss, item.id, ms, paused]);
+  }, [dismiss, item.id, item.sticky, ms, paused]);
 
   return (
     <div

@@ -23,9 +23,9 @@ export default function App() {
   const [keysOpen, setKeysOpen] = useState(false);
   const toastSeq = useRef(1);
 
-  const notify = useCallback((text: string, tone: ToastItem['tone'] = 'info', action?: ToastItem['action']) => {
+  const notify = useCallback((text: string, tone: ToastItem['tone'] = 'info', action?: ToastItem['action'], sticky?: boolean) => {
     const id = toastSeq.current++;
-    setToasts((list) => [...list.slice(-2), { id, text, tone, action }]);
+    setToasts((list) => [...list.slice(-2), { id, text, tone, action, sticky }]);
   }, []);
   const dismissToast = useCallback((id: number) => {
     setToasts((list) => list.filter((t) => t.id !== id));
@@ -49,6 +49,19 @@ export default function App() {
     checkClaude();
     return api.onLessonEvent((e) => { if (e.type !== 'status') refresh(); });
   }, [refresh, checkClaude]);
+
+  useEffect(() => {
+    api.checkUpdate().then((u) => {
+      if (!u) return;
+      notify(`有新版本 ${u.version}`, 'info', {
+        label: '更新並重新啟動',
+        onClick: () => {
+          notify(`正在下載 ${u.version}…`, 'info', undefined, true);
+          u.install().catch((e) => notify(`更新失敗：${e}`, 'err'));
+        },
+      }, true);
+    }, (e) => console.warn('update check failed', e));
+  }, [notify]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -102,7 +115,7 @@ export default function App() {
         onDelete={deleteLesson} onSearch={() => setCmdOpen(true)} collapsed={!settings.sidebarOpen}
       />
       {view.name === 'home' && (
-        <Home lessons={lessons} settings={settings} update={update} onAsk={ask} open={(id) => setView({ name: 'lesson', id })} onError={(m) => notify(m, 'err')} />
+        <Home lessons={lessons} settings={settings} update={update} onAsk={ask} open={(id) => setView({ name: 'lesson', id })} onError={(m) => notify(m, 'err')} claude={claude} onRecheck={checkClaude} />
       )}
       {view.name === 'lesson' && (
         <LessonView
