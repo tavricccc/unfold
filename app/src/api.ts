@@ -12,6 +12,7 @@ import { playableSteps } from '../sidecar/check';
 export interface Ref { path: string; name: string }
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+export const isMacApp = inTauri && typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
 
 export interface Api {
   listLessons(): Promise<LessonMeta[]>;
@@ -77,6 +78,7 @@ function tauriApi(): Api {
     claudeStatus: () => call('claude_status'),
     appVersion: async () => (await import('@tauri-apps/api/app')).getVersion(),
     async checkUpdate() {
+      if (isMacApp) return null;
       const { check } = await import('@tauri-apps/plugin-updater');
       const u = await check();
       if (!u) return null;

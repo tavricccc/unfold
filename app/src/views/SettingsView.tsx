@@ -1,6 +1,6 @@
 import author from '../assets/author.png';
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, isMacApp } from '../api';
 import { Icon } from '../icons';
 import { EFFORTS, EFFORT_LABEL, FONT_SIZE_LABEL, MODEL_LABEL, type Accent, type FontSize, type Model, type Settings, type Theme } from '../settings';
 
@@ -126,16 +126,16 @@ export function SettingsView({ settings, update, claude, onRecheck, onShowShortc
               </div>
             )}
             <div className="row">
-              <div className="k">版本<span className="kd">{upd.s === 'latest' ? '已是最新版' : upd.s === 'error' ? `檢查失敗：${upd.msg}` : upd.s === 'found' ? `有新版本 ${upd.version}` : ''}</span></div>
+              <div className="k">版本{!isMacApp && <span className="kd">{upd.s === 'latest' ? '已是最新版' : upd.s === 'error' ? `檢查失敗：${upd.msg}` : upd.s === 'found' ? `有新版本 ${upd.version}` : ''}</span>}</div>
               <div className="v">
                 <span className="ver tnum">{version}</span>
-                {upd.s === 'found' ? (
+                {!isMacApp && (upd.s === 'found' ? (
                   <button type="button" className="btn" onClick={() => install(upd.install)}><Icon.retry />更新並重新啟動</button>
                 ) : (
                   <button type="button" className={`btn conn-re${upd.s === 'checking' || upd.s === 'installing' ? ' spin' : ''}`} onClick={checkUpdate} disabled={upd.s === 'checking' || upd.s === 'installing'}>
                     <Icon.retry />{upd.s === 'checking' ? '檢查中…' : upd.s === 'installing' ? '正在更新…' : '檢查更新'}
                   </button>
-                )}
+                ))}
               </div>
             </div>
             <div className="row one">
