@@ -308,6 +308,7 @@ function mockApi(): Api {
       store.delete(id);
     },
     async cancelLesson(id) {
+      if (!timers.has(id)) throw new Error('這一課已經不在生成了');
       timers.get(id)?.forEach(clearTimeout);
       timers.delete(id);
       const r = store.get(id);

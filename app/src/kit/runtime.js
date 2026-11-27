@@ -360,13 +360,20 @@
           n.classList.toggle('u-focus', focus.has(id));
           if (n.dataset.dim !== 'no') n.classList.toggle('u-dim', any && shown && !focus.has(id) && !n.dataset.keep);
           if (wasHid && shown && n.dataset.drawLen) {
-            // animate SVG stroke draw when revealed
             const len = n.dataset.drawLen;
             const sh = n.querySelector('.u-shaft') || n;
             if (sh && !sh.classList.contains('u-dash')) {
+              const instant = document.documentElement.classList.contains('u-instant');
+              sh.style.transition = 'none';
               sh.style.strokeDasharray = len;
-              sh.style.strokeDashoffset = document.documentElement.classList.contains('u-instant') ? '0' : len;
-              requestAnimationFrame(() => { sh.style.strokeDashoffset = '0'; });
+              sh.style.strokeDashoffset = instant ? '0' : len;
+              if (!instant) {
+                sh.getBoundingClientRect();
+                sh.style.transition = '';
+                sh.style.strokeDashoffset = '0';
+              } else {
+                sh.style.transition = '';
+              }
             }
           }
         }
@@ -574,7 +581,9 @@
             el.style.transition = 'none';
             el.style.strokeDasharray = String(len);
             el.style.strokeDashoffset = String(len);
-            requestAnimationFrame(() => { el.style.transition = ''; el.style.strokeDashoffset = '0'; });
+            el.getBoundingClientRect();
+            el.style.transition = '';
+            el.style.strokeDashoffset = '0';
           });
         };
         missing(reg, steps);
@@ -683,7 +692,9 @@
             g.shaft.style.transition = 'none';
             g.shaft.style.strokeDasharray = len;
             g.shaft.style.strokeDashoffset = len;
-            requestAnimationFrame(() => { g.shaft.style.transition = ''; g.shaft.style.strokeDashoffset = '0'; });
+            g.shaft.getBoundingClientRect();
+            g.shaft.style.transition = '';
+            g.shaft.style.strokeDashoffset = '0';
           }
         });
       };
