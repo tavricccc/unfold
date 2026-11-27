@@ -240,16 +240,17 @@ async function main() {
         model,
         ...(effort ? { effort } : {}),
         ...(resume ? { resume } : {}),
-        tools: refs.length ? REF_TOOLS : [],
+        tools: refs.length ? [...REF_TOOLS, WEB_SEARCH] : [WEB_SEARCH],
         mcpServers: { unfold },
-        allowedTools: [READ_TOOL],
+        allowedTools: [READ_TOOL, WEB_SEARCH],
         settingSources: [],
-        // reading a project takes turns of its own
-        maxTurns: refs.length ? 48 : 8,
+        // reading a project, or searching for current facts, takes turns of its own
+        maxTurns: refs.length ? 48 : 16,
         ...(refs.length ? {
           additionalDirectories: refs,
           hooks: { PreToolUse: [{ matcher: REF_TOOLS.join('|'), hooks: [guard] }] },
           canUseTool: async (name: string, input: Record<string, unknown>) => {
+            if (name === WEB_SEARCH) return { behavior: 'allow' as const, updatedInput: input };
             const t = REF_TOOLS.includes(name) ? refTarget(name, input, refs) : { deny: `${name} is not available` };
             return 'deny' in t ? { behavior: 'deny' as const, message: t.deny } : { behavior: 'allow' as const, updatedInput: input };
           },
@@ -272,10 +273,19 @@ async function main() {
           block = ev.content_block.name ?? '';
           json = '';
           if (block === READ_TOOL) setPhase('正在看前面寫過的內容…');
+          if (block === WEB_SEARCH) setPhase('正在網路上查最新資料…');
           if (REF_TOOLS.includes(block)) setPhase(block === 'Read' ? '正在讀資料…' : block === 'Glob' ? '正在看資料夾裡有什麼…' : '正在資料裡搜尋…');
         }
-        if (ev?.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta' && REF_TOOLS.includes(block)) {
+        if (ev?.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta' && (REF_TOOLS.includes(block) || block === WEB_SEARCH)) {
           json += ev.delta.partial_json;
+          continue;
+        }
+        if (ev?.type === 'content_block_stop' && block === WEB_SEARCH) {
+          try {
+            const inp = JSON.parse(json || '{}');
+            if (typeof inp.query === 'string') setPhase(`正在網路上查「${inp.query.slice(0, 40)}」…`);
+          } catch { /* the call itself is checked by Claude Code */ }
+          block = '';
           continue;
         }
         if (ev?.type === 'content_block_stop' && REF_TOOLS.includes(block)) {
@@ -418,6 +428,9 @@ async function main() {
   const { value, cost } = await settle(result, (a) => toPart(a, req.question, chs, at));
   emit({ type: 'part', part: value.lesson ? { ...value, lesson: sourced(value.lesson) } : sourced(value), model, cost });
 }
+
+/** Claude Code's own web search, offered in every lesson for facts that change over time. */
+const WEB_SEARCH = 'WebSearch';
 
 /** Problems with the learner's Claude account: retrying or a new session cannot fix them. */
 class AccountError extends Error {}
