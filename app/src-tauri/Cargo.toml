@@ -2,8 +2,8 @@
 name = "unfold"
 version = "0.1.0"
 description = "A personal interactive tutor"
-authors = []
-license = ""
+authors = ["tavricccc"]
+license = "MIT"
 repository = ""
 edition = "2024"
 rust-version = "1.90"
