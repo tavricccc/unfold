@@ -2,7 +2,7 @@
 // can act on, so a failed check can be sent back for one repair.
 import { compile } from '../src/widgets/expr.ts';
 import { ICONS } from '../src/kit/icons.ts';
-import type { Step, Widget } from '../src/lesson.ts';
+import { KIT_KINDS, type Lesson, type Step, type Widget } from '../src/lesson.ts';
 
 /** The ids a kit visual defines, or undefined when the widget is not a kit visual. */
 function kitIds(w: Widget): Set<string> | undefined {
@@ -133,3 +133,49 @@ export function problems(w: Widget, steps: Step[]): string[] {
   }
   return out;
 }
+
+/**
+ * How many of a streamed chapter's first steps can be played: whole steps (one is whole once the
+ * next has begun, or the steps are done), on scenes that pass the checks. A kit scene waits for all
+ * of its steps, because what they reveal is shown from the start until a step says otherwise.
+ */
+export function playableSteps(steps: Step[], closed: boolean): number {
+  const done = closed ? steps.length : Math.max(0, steps.length - 1);
+  if (!steps[0]?.scene || done === 0) return 0;
+  const starts = steps.flatMap((st, k) => (st.scene && k < done ? [k] : []));
+  let ready = 0;
+  for (let n = 0; n < starts.length; n++) {
+    const s = starts[n];
+    const next = steps.findIndex((st, k) => k > s && !!st.scene);
+    const shut = closed || next >= 0;
+    const end = Math.min(next >= 0 ? next : steps.length, done);
+    const w = steps[s].scene!;
+    if (problems(w, steps.slice(s, end)).length) break;
+    if (!shut && (KIT_KINDS as readonly string[]).includes(w.kind)) break;
+    ready = end;
+  }
+  return ready;
+}
+
+/**
+ * Problems with the scenes a run of steps opens; `base` is the scene the steps before the first one
+ * continue (a follow-up's steps on the chapter's last scene). Without it the first step must open one.
+ */
+export function sceneProblems(steps: Step[], base?: { widget: Widget; steps: Step[] }): string[] {
+  const bad: string[] = [];
+  const starts = steps.flatMap((st, k) => (st.scene ? [k] : []));
+  if (base) {
+    const cont = steps.slice(0, starts[0] ?? steps.length);
+    if (cont.length) bad.push(...problems(base.widget, [...base.steps, ...cont]));
+  } else if (!steps[0]?.scene) bad.push('the first step must open a scene ("scene")');
+  starts.forEach((s, n) => {
+    const own = steps.slice(s, starts[n + 1] ?? steps.length);
+    const where = starts.length > 1 || base ? `the scene opened at step ${s}: ` : '';
+    bad.push(...problems(steps[s].scene!, own).map((p) => where + p));
+  });
+  return bad;
+}
+
+/** Problems with a whole chapter, saved before scenes existed (one widget) or after. */
+export const lessonProblems = (L: Lesson): string[] =>
+  L.widget && !L.steps[0]?.scene ? problems(L.widget, L.steps) : sceneProblems(L.steps);

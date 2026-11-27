@@ -25,7 +25,7 @@ async function one(i: number) {
   const res = {
     i, question: qs[i], ms: Date.now() - t0, ok: fin?.type === 'lesson', error: fin?.message,
     repaired: /repairing:/.test(stderr), repairNote: stderr.match(/repairing: .*/)?.[0],
-    kind: fin?.lesson?.widget?.kind, cost: fin?.cost, lesson: fin?.lesson,
+    kind: fin?.lesson && (fin.lesson.widget ? [fin.lesson.widget] : fin.lesson.steps.flatMap((st: { scene?: { kind: string } }) => (st.scene ? [st.scene] : []))).map((w: { kind: string }) => w.kind).join('+'), cost: fin?.cost, lesson: fin?.lesson,
   };
   fs.writeFileSync(path.join(out, `q${i}.json`), JSON.stringify(res, null, 2));
   console.log(`q${i} ${res.ok ? 'ok' : 'FAIL'} ${res.kind ?? ''} ${(res.ms / 1000).toFixed(0)}s $${res.cost?.usd?.toFixed(3) ?? '?'}${res.repaired ? ' (repaired)' : ''} ${qs[i]}${res.error ? ' :: ' + res.error : ''}`);

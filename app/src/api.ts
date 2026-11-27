@@ -1,11 +1,12 @@
 // Backend access. Inside Tauri this calls the Rust commands; in a plain browser (design review,
 // screenshots) it falls back to an in-memory store seeded with recorded lessons.
-import type { Answer, Lesson, LessonEvent, LessonMeta, LessonRecord, Part } from './lesson';
+import type { Answer, Draft, Lesson, LessonEvent, LessonMeta, LessonRecord, Part } from './lesson';
 import type { Gen } from './settings';
 import { chaptersOf, courseWritten, itemsOf } from './chapters';
 import bubble from '../fixtures/bubble.json';
 import deriv from '../fixtures/deriv.json';
 import pyth from '../fixtures/pyth.json';
+import { playableSteps } from '../sidecar/check';
 
 /** A reference folder as the UI shows it. */
 export interface Ref { path: string; name: string }
@@ -109,6 +110,53 @@ const PREVIEW_ASK = {
 };
 
 /** Browser preview only: a made-up cost so the cost line has something to show. */
+/** A lesson saved before scenes existed, rewritten the way Claude now writes one: its visual opens on the first step. */
+const withScenes = (L: Lesson): Lesson => {
+  if (!L.widget || L.steps[0]?.scene) return L;
+  const { widget, task, ...rest } = L;
+  return { ...rest, steps: L.steps.map((st, k) => (k === 0 ? { ...st, scene: widget, task } : st)) };
+};
+
+/** What the sidecar streams once `n` of a chapter's steps have begun: the playable ones whole, the rest as text. */
+function draftOf(L: Lesson, n: number): Draft {
+  const steps = L.steps.slice(0, n);
+  const ready = playableSteps(steps, n === L.steps.length);
+  return {
+    mode: 'chapter', title: L.title, subject: L.subject, crumbs: L.crumbs,
+    steps: steps.map((st, k) => (k < ready ? st : { text: st.text })), ...(ready ? { ready } : {}),
+  };
+}
+
+/** Two scenes and a board on every calculation: the derivative on a plot, then a summary of three views of it. */
+function previewScenes(): Lesson {
+  const L = withScenes(deriv.lesson as unknown as Lesson);
+  const boards = [
+    undefined,
+    { lines: ['高度變化 = 3² − 1² = 9 − 1 = 8', '割線斜率 = 8 ÷ 2 = **4**'] },
+    { lines: ['高度變化 = 2² − 1² = 4 − 1 = 3', '割線斜率 = 3 ÷ 1 = **3**'] },
+    { values: [{ label: '間距 h', value: '0.001' }, { label: '割線斜率', value: '2.001' }] },
+    { lines: ['[f(p+h) − f(p)] ÷ h = (2ph + h²) ÷ h', '= 2p + h', 'h → 0 ⇒ f′(p) = 2p', 'f′(1) = 2 × 1 = **2**'] },
+    { lines: ['f′(x) = 2x', 'f′(2) = 2 × 2 = **4**'] },
+  ];
+  const steps = L.steps.map((st, k) => (boards[k] ? { ...st, board: boards[k] } : st));
+  steps.push(
+    {
+      text: '換個角度整理：同一個導數，可以用**三種方式**來看。',
+      task: '對照三張卡，把每一張連回前面看到的畫面。',
+      scene: { kind: 'points', points: { center: '導數是什麼？', items: [
+        { id: 'geo', title: '幾何', text: '曲線在那一點的切線斜率' },
+        { id: 'lim', title: '極限', text: '割線斜率在 h → 0 時逼近的值' },
+        { id: 'rate', title: '變化率', text: '那一瞬間變化得多快，例如瞬時速度' },
+      ] } },
+      reveal: ['geo'], focus: ['geo'],
+    },
+    { text: '割線斜率逼近的值，就是切線的斜率：**極限是算法，切線是它在圖上的樣子**。', reveal: ['lim'], focus: ['lim'] },
+    { text: '而切線斜率說的，正是那一瞬間的變化快慢，所以**位置對時間的導數就是瞬時速度**。', reveal: ['rate'], focus: ['rate'] },
+  );
+  return { ...L, steps };
+}
+const PREVIEW_SCENES = previewScenes();
+
 const PREVIEW_COST = { usd: 0.0214, input: 3, output: 2870, cacheRead: 11200, cacheWrite: 4100 };
 
 /** Preview-only lessons demonstrating the code walkthrough and interactive quiz kit visuals. */
@@ -300,7 +348,7 @@ function mockApi(): Api {
     if (/架構|結構|專案|系統/.test(q)) return { lesson: PREVIEW_ARCH, model: 'preview' };
     if (/流程|判斷|迴圈/.test(q)) return { lesson: PREVIEW_FLOW, model: 'preview' };
     if (/畢氏|三角|幾何|證明/i.test(q)) return fixtures[1];
-    if (/導數|斜率|微積分|函數/.test(q)) return fixtures[2];
+    if (/導數|斜率|微積分|函數/.test(q)) return { lesson: PREVIEW_SCENES, model: 'preview' };
     return fixtures[0];
   };
   /**
@@ -309,18 +357,19 @@ function mockApi(): Api {
    */
   const playChapter = (id: string, f: { lesson: Lesson; model: string }, t: number[], at: number, part?: Omit<Part, 'lesson'>, next?: string) => {
     const r = store.get(id)!;
-    const { widget: _w, ...draft } = f.lesson;
+    const L = withScenes(f.lesson);
     t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在寫步驟…' }), at + 400));
-    draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
-      const d = { mode: 'chapter' as const, ...draft, steps: draft.steps.slice(0, i + 1) };
+    // slow enough to watch the first steps play while the rest is written
+    L.steps.forEach((_, i) => t.push(window.setTimeout(() => {
+      const d = draftOf(L, i + 1);
       if (part) r.pending!.draft = d; else r.draft = d;
       emit({ id, type: 'partial', lesson: d, more: !!part });
-    }, at + 700 + i * 300)));
-    const end = at + 2400 + draft.steps.length * 300;
+    }, at + 700 + i * 1100)));
+    const end = at + 1400 + L.steps.length * 1100;
     t.push(window.setTimeout(() => {
       if (!store.has(id)) return;
-      if (part) { r.more = [...(r.more ?? []), { ...part, lesson: f.lesson, model: f.model, cost: PREVIEW_COST }]; r.pending = undefined; }
-      else Object.assign(r, { status: 'ready', lesson: f.lesson, model: f.model, draft: undefined, cost: PREVIEW_COST });
+      if (part) { r.more = [...(r.more ?? []), { ...part, lesson: L, model: f.model, cost: PREVIEW_COST }]; r.pending = undefined; }
+      else Object.assign(r, { status: 'ready', lesson: L, model: f.model, draft: undefined, cost: PREVIEW_COST });
       if (next) r.pending = { question: next, status: 'generating', course: true };
       emit({ id, type: 'ready' });
     }, end));
@@ -409,13 +458,13 @@ function mockApi(): Api {
       t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在想怎麼教…' }), 300));
       if (/測驗|考考|練習|題目|檢核|二分|程式碼|架構|流程/i.test(question)) {
         const f = pickFixture(question);
-        const { widget: _w, ...draft } = f.lesson;
-        draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
+        const L = withScenes(f.lesson);
+        L.steps.forEach((_, i) => t.push(window.setTimeout(() => {
           if (!r.pending) return;
-          r.pending.draft = { mode: 'chapter', ...draft, steps: draft.steps.slice(0, i + 1) };
+          r.pending.draft = draftOf(L, i + 1);
           emit({ id, type: 'partial', lesson: r.pending.draft, more: true });
         }, 450 + i * 260)));
-        done({ question, mode: 'chapter', lesson: f.lesson, model: f.model, cost: PREVIEW_COST });
+        done({ question, mode: 'chapter', lesson: L, model: f.model, cost: PREVIEW_COST });
       } else if (n % 2 === 0) {
         const text = '好問題背後通常是同一件事：**每一步只看眼前兩個數字**。所以不用記整個過程，只要跟著當下的核心條件走就好。';
         for (let k = 1; k <= 4; k++) t.push(window.setTimeout(() => {
@@ -426,13 +475,13 @@ function mockApi(): Api {
         done({ question, mode: 'text', at: chapter, text, suggestions: r.lesson!.suggestions, model: 'preview', cost: PREVIEW_COST });
       } else {
         const f = fixtures[(fixtures.findIndex((x) => x.lesson.title === r.lesson!.title) + 1 + n) % fixtures.length];
-        const { widget: _w, ...draft } = f.lesson;
-        draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
+        const L = withScenes(f.lesson);
+        L.steps.forEach((_, i) => t.push(window.setTimeout(() => {
           if (!r.pending) return;
-          r.pending.draft = { mode: 'chapter', ...draft, steps: draft.steps.slice(0, i + 1) };
+          r.pending.draft = draftOf(L, i + 1);
           emit({ id, type: 'partial', lesson: r.pending.draft, more: true });
         }, 500 + i * 250)));
-        done({ question, mode: 'chapter', lesson: f.lesson, model: f.model, cost: PREVIEW_COST });
+        done({ question, mode: 'chapter', lesson: L, model: f.model, cost: PREVIEW_COST });
       }
       timers.set(id, t);
     },

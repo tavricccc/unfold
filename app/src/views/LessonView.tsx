@@ -3,8 +3,8 @@ import { api } from '../api';
 import { Composer } from '../components/Composer';
 import { GenPicker } from '../components/GenPicker';
 import { Icon, rich } from '../icons';
-import { chaptersOf, courseWritten, itemsOf, lastSuggestions, type Chapter, type Item } from '../chapters';
-import { KIT_KINDS, type Answer, type Ask as Questions, type Cost, type Course, type Draft, type KitKind, type LessonRecord, type Step, type Widget } from '../lesson';
+import { chaptersOf, courseWritten, itemsOf, lastSuggestions, sceneOf, type Chapter, type Item } from '../chapters';
+import { KIT_KINDS, type Answer, type Ask as Questions, type Board as BoardSpec, type Cost, type Course, type Draft, type KitKind, type LessonRecord, type Step, type Widget } from '../lesson';
 import { kitBody } from '../kit/doc';
 import { DEFAULT_NARR_WIDTH, EFFORT_LABEL, MAX_NARR_WIDTH, MIN_NARR_WIDTH, MODEL_LABEL, type Gen, type Settings } from '../settings';
 import { BubbleSort } from '../widgets/BubbleSort';
@@ -70,7 +70,8 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
     });
   }, [id, load]);
 
-  const chs = rec ? chaptersOf(rec) : [];
+  // a chapter still being written plays as far as it is written
+  const chs = rec ? chaptersOf(rec, true) : [];
   const flat = itemsOf(chs);
   const total = flat.length;
 
@@ -87,6 +88,15 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
     setStatus('正在讀你的追問…');
     api.continueLesson(id, q, gen, chapter).then(load, (e) => { jump.current = null; setStatus(`沒辦法追問：${e}`); load(); });
   }, [id, gen, parts, load]);
+
+  // a follow-up written as a new chapter is opened as soon as its first steps can be played
+  const liveLanding = jump.current == null ? undefined : flat.find((it) => it.part === jump.current);
+  useEffect(() => {
+    if (!liveLanding) return;
+    jump.current = null;
+    setStep(liveLanding.i); setAnimate(true);
+    api.setProgress(id, liveLanding.i).then(onProgress, (e) => console.error('save progress failed', e));
+  }, [liveLanding, id, onProgress]);
 
   const next = useCallback(() => {
     if (widget.current?.busy()) widget.current.finish();
@@ -114,8 +124,8 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
       else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
       else if (cur && e.key === 'PageDown') { e.preventDefault(); toChapter(cur.chapter + 1); }
       else if (cur && e.key === 'PageUp') { e.preventDefault(); toChapter(chs[cur.chapter].items[0].i < cur.i ? cur.chapter : cur.chapter - 1); }
-      else if (rec?.status === 'ready' && e.key.toLowerCase() === 'r') { e.preventDefault(); replay(); }
-      else if (rec?.status === 'ready' && e.key.toLowerCase() === 'f') { e.preventDefault(); setStageExpanded((v) => !v); }
+      else if (total > 0 && e.key.toLowerCase() === 'r') { e.preventDefault(); replay(); }
+      else if (total > 0 && e.key.toLowerCase() === 'f') { e.preventDefault(); setStageExpanded((v) => !v); }
       else if (chs.length > 1 && e.key >= '1' && e.key <= '9') {
         const idx = Number(e.key) - 1;
         if (idx < chs.length) { e.preventDefault(); toChapter(idx); }
@@ -203,8 +213,8 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
     );
   }
 
-  // Still writing the lesson itself, or it failed.
-  if (rec.status !== 'ready' || !rec.lesson) {
+  // Still writing the lesson's first steps, or it failed.
+  if (!chs.length) {
     const failed = rec.status === 'error';
     const d = rec.draft;
     return (
@@ -241,19 +251,23 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
     );
   }
 
-  const L = rec.lesson;
-  const short = (rec.course?.title ?? L.title).split(/[：:]/)[0];
+  const crumbs = rec.lesson?.crumbs ?? rec.draft?.crumbs ?? [];
+  const short = (rec.course?.title ?? chs[0].written).split(/[：:]/)[0];
   const ch = chs[cur.chapter];
   const pend = rec.pending;
-  const writing = pend?.status === 'generating';
+  const writing = rec.status === 'generating' || pend?.status === 'generating';
+  /** the chapter being written already plays as the last chapter */
+  const liveTail = !!chs[chs.length - 1].live;
+  const liveDraft = !rec.lesson ? rec.draft : liveTail ? pend?.draft : undefined;
   const pendAt = Math.min(pend?.at ?? chs.length - 1, chs.length - 1);
   const atEnd = ch.items[ch.items.length - 1].i <= step + 1;
-  const shownPend = !!pend && pendAt === cur.chapter && atEnd;
-  const drafting = shownPend && !!pend?.course;
+  const shownPend = !!pend && !liveTail && pendAt === cur.chapter && atEnd;
+  const drafting = (shownPend || (liveTail && !!rec.lesson)) && !!pend?.course;
   const writtenCourse = courseWritten(rec);
   const todo = rec.course ? rec.course.outline.slice(writtenCourse + (drafting ? 1 : 0)) : [];
-  const allUnwritten = rec.course ? rec.course.outline.slice(writtenCourse) : [];
+  const allUnwritten = rec.course ? rec.course.outline.slice(writtenCourse + (liveTail && pend?.course ? 1 : 0)) : [];
   const after = flat[step + 1];
+  const scene = sceneOf(ch, cur.version);
   const rename = (name: string) => api.renameChapter(id, cur.chapter, name).then(load, (e) => setStatus(`沒辦法改名：${e}`));
   const showChapterMenu = chs.length > 1 || !!rec.course;
 
@@ -261,7 +275,7 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
     <main className={`panel view-in${stageExpanded ? ' expanded' : ''}`}>
       <header className="bar">
         <div className="crumb">
-          {L.crumbs.filter((c) => c !== short).map((c) => <Fragment key={c}>{c}<Icon.chevron /></Fragment>)}
+          {crumbs.filter((c) => c !== short).map((c) => <Fragment key={c}>{c}<Icon.chevron /></Fragment>)}
           <b>{short}</b>
         </div>
         <Refs refs={rec.refs} />
@@ -278,7 +292,7 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
         <button type="button" className="ib" onClick={prev} disabled={step === 0} aria-label="上一步" title="上一步（←）"><Icon.left /></button>
         {after
           ? <button type="button" className="go" onClick={next} title="繼續（→）">{after.chapter !== cur.chapter ? '下一章' : '繼續'}<Icon.right /></button>
-          : writing ? <span className="fin wait">{pend?.course ? '正在寫下一章' : '正在回答'}</span>
+          : writing ? <span className="fin wait">{ch.live ? '正在寫下一步' : pend?.course ? '正在寫下一章' : '正在回答'}</span>
           : <span className="fin"><Icon.check />學完了</span>}
       </header>
       <div className={`body${stageExpanded ? ' stage-full' : ' split'}${draggingSplit ? ' dragging' : ''}`}>
@@ -298,6 +312,12 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
                   {it.sources && it.i <= step && <Sources files={it.sources} />}
                 </Fragment>
               ))}
+              {ch.live && !after && liveDraft && (
+                <>
+                  {liveDraft.steps?.[liveDraft.ready ?? 0]?.text && <p className="para next">{rich(liveDraft.steps[liveDraft.ready ?? 0].text)}</p>}
+                  <div className="skel"><i /><i style={{ width: '70%' }} /></div>
+                </>
+              )}
               {!after && !writing && !shownPend && (
                 <div className="done-card">
                   <span className="done-ic"><Icon.check /></span>
@@ -349,7 +369,7 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
         )}
         <div className="stage">
           <div className="stage-hd">
-            <p className="task">{ch.tasks[cur.version]}</p>
+            <p className="task" key={ch.tasks[cur.local]}>{ch.tasks[cur.local]}</p>
             <div className={`stage-tools${stageDirty || stageExpanded ? ' show' : ''}`}>
               {stageDirty && (
                 <button type="button" className="st-btn acc" onClick={() => widget.current?.reset?.()} title="還原為這一步的狀態">
@@ -368,9 +388,10 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
               </button>
             </div>
           </div>
-          <div className="wbox">
+          <Board board={ch.boards[cur.local]} />
+          <div className="wbox" key={widgetKey}>
             <WidgetFor
-              key={widgetKey} widget={ch.versions[cur.version]} steps={ch.steps} step={cur.local} animate={animate}
+              widget={scene.widget} steps={scene.steps} step={cur.local - ch.from[cur.version]} animate={animate}
               handle={widget} onDirtyChange={setStageDirty}
               onFix={writing ? undefined : (msg) => follow(`（視覺出錯，請修好它並保持原本的內容）錯誤訊息：${msg}`, cur.chapter)}
             />
@@ -492,6 +513,34 @@ function Drafting({ draft }: { draft?: Draft }) {
       {draft?.steps?.map((st, k) => <p key={k} className="para past">{rich(st.text)}</p>)}
       <div className="skel"><i /><i style={{ width: '70%' }} /></div>
     </>
+  );
+}
+
+/**
+ * The words beside the visual for a step: worked lines building to a result, and the key values.
+ * It changes in place, so the learner sees which line is new.
+ */
+function Board({ board }: { board?: BoardSpec }) {
+  if (!board) return null;
+  const lines = board.lines ?? [], values = board.values ?? [];
+  return (
+    <div className="board">
+      {lines.length > 0 && (
+        <div className="bd-lines">
+          {lines.map((l, k) => <p key={`${k}-${l}`} className={k === lines.length - 1 ? 'last' : ''}>{rich(l)}</p>)}
+        </div>
+      )}
+      {values.length > 0 && (
+        <div className="bd-vals">
+          {values.map((v) => (
+            <div key={v.label} className="bd-v">
+              <span>{v.label}</span>
+              <b key={v.value} className="tnum">{v.value}</b>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

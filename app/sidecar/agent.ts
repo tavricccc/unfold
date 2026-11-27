@@ -27,9 +27,9 @@
 import { createSdkMcpServer, query, tool, type HookCallback } from '@anthropic-ai/claude-agent-sdk';
 import { isAbsolute, resolve } from 'node:path';
 import { z } from 'zod';
-import { chaptersOf, courseWritten, type Chapter } from '../src/chapters.ts';
-import type { Answer as Reply, Ask, Cost, Course, Draft, Lesson, LessonRecord, Part, Widget } from '../src/lesson.ts';
-import { problems } from './check.ts';
+import { chaptersOf, courseWritten, sceneAt, type Chapter } from '../src/chapters.ts';
+import type { Answer as Reply, Ask, Cost, Course, Draft, Lesson, LessonRecord, Part, Step, Widget } from '../src/lesson.ts';
+import { playableSteps, sceneProblems } from './check.ts';
 import { REF_TOOLS, refTarget, shortPath } from './refs.ts';
 import { parsePartial } from './partial.ts';
 import { RESPONSE_SCHEMA, SYSTEM_PROMPT, refsPrompt } from './prompt.ts';
@@ -54,7 +54,7 @@ interface Answer {
   mode: 'ask' | 'course' | 'chapter' | 'extend' | 'text';
   title?: string; subject?: Lesson['subject']; crumbs?: string[]; text?: string;
   questions?: Ask['questions']; outline?: Course['outline'];
-  steps?: Lesson['steps']; task?: string; suggestions?: string[]; widget?: Widget;
+  steps?: Step[]; suggestions?: string[];
   edits?: { find: string; replace: string }[];
 }
 
@@ -64,14 +64,19 @@ type Start =
   | { kind: 'course'; course: Course & { subject: Lesson['subject']; crumbs: string[] } }
   | { kind: 'lesson'; lesson: Lesson };
 
-/** One chapter as it is now, for read_chapter. */
+/** One chapter as it is now, for read_chapter: its scenes as they are now, and its steps by scene. */
 function chapterView(ch: Chapter, n: number) {
-  const replies = ch.items.filter((it) => it.kind === 'text').map((it) => ({ afterStep: it.local, question: it.asked, text: it.text }));
-  return {
-    chapter: n + 1, title: ch.title, question: ch.question, task: ch.tasks[ch.tasks.length - 1],
-    steps: ch.steps.map((st, index) => ({ index, ...st })),
-    replies, visualVersions: ch.versions.length, currentVisual: ch.versions[ch.versions.length - 1],
-  };
+  const starts = [...new Set(ch.from)].sort((a, b) => a - b);
+  const scenes = starts.map((f, scene) => ({ scene: scene + 1, visual: ch.versions[ch.from.lastIndexOf(f)] }));
+  const steps = ch.steps.map(({ scene: _s, ...st }, k) => {
+    const at = sceneAt(ch, k);
+    return { scene: at.scene + 1, index: at.index, ...st, task: ch.tasks[k] || undefined };
+  });
+  const replies = ch.items.filter((it) => it.kind === 'text').map((it) => {
+    const at = sceneAt(ch, it.local);
+    return { afterStep: { scene: at.scene + 1, index: at.index }, question: it.asked, text: it.text };
+  });
+  return { chapter: n + 1, title: ch.title, question: ch.question, scenes, steps, replies };
 }
 
 /** The lesson in words, for a new session that has not seen it. */
@@ -79,7 +84,8 @@ function outline(chs: Chapter[]) {
   return chs.map((ch, n) => {
     const lines = ch.items.map((it) => {
       const q = it.asked ? `（學生追問：${it.asked}）\n` : '';
-      return it.kind === 'step' ? `${q}${it.local}. ${it.text}` : `${q}（文字回覆）${it.text}`;
+      const at = sceneAt(ch, it.local);
+      return it.kind === 'step' ? `${q}${at.scene + 1}-${at.index}. ${it.text}` : `${q}（文字回覆）${it.text}`;
     });
     return `第 ${n + 1} 章「${ch.title}」（學生問：${ch.question}）\n${lines.join('\n')}`;
   }).join('\n\n');
@@ -87,7 +93,9 @@ function outline(chs: Chapter[]) {
 
 function where(chs: Chapter[], at: number) {
   const ch = chs[at];
-  return `學生正在讀第 ${at + 1} 章「${ch.title}」，這一章目前有 ${ch.steps.length} 步（編號 0 到 ${ch.steps.length - 1}），視覺是 ${ch.versions[ch.versions.length - 1].kind}。`;
+  const last = sceneAt(ch, ch.steps.length - 1);
+  const scenes = last.scene + 1;
+  return `學生正在讀第 ${at + 1} 章「${ch.title}」，這一章目前有 ${ch.steps.length} 步${scenes > 1 ? `、${scenes} 個畫面` : ''}。最後一個畫面是 ${ch.versions[ch.versions.length - 1].kind}，有 ${last.index + 1} 步（編號 0 到 ${last.index}），續寫的步驟從 ${last.index + 1} 接著編。`;
 }
 
 /** Text of a string value that is still being streamed, for a text-only reply. */
@@ -102,11 +110,10 @@ class Fixable extends Error {
   constructor(readonly issues: string[]) { super(`the answer has problems: ${issues.join('; ')}`); }
 }
 
-function checkWidget(w: Widget | undefined, steps: Lesson['steps']): Widget {
-  if (!w) throw new Fixable(['the chapter has no widget']);
-  const bad = problems(w, steps);
+/** Checks every scene the steps open; `base` is the scene the steps before the first one continue. */
+function checkScenes(steps: Step[], base?: { widget: Widget; steps: Step[] }) {
+  const bad = sceneProblems(steps, base);
   if (bad.length) throw new Fixable(bad);
-  return w;
 }
 
 const lacking = (a: Answer, keys: readonly (keyof Answer)[]) =>
@@ -115,9 +122,10 @@ const lacking = (a: Answer, keys: readonly (keyof Answer)[]) =>
 /** Turns a chapter answer into a chapter. */
 function toLesson(a: Answer): Lesson {
   if (a.mode !== 'chapter') throw new Fixable([`this answer must be a chapter (mode "chapter"), got "${a.mode}"`]);
-  const lacks = lacking(a, ['title', 'steps', 'task', 'subject', 'crumbs']);
+  const lacks = lacking(a, ['title', 'steps', 'subject', 'crumbs']);
   if (lacks.length) throw new Fixable([`a chapter needs ${lacks.join(', ')}`]);
-  return { title: a.title!, subject: a.subject!, crumbs: a.crumbs!, steps: a.steps!, task: a.task!, suggestions: a.suggestions ?? [], widget: checkWidget(a.widget, a.steps!) };
+  checkScenes(a.steps!);
+  return { title: a.title!, subject: a.subject!, crumbs: a.crumbs!, steps: a.steps!, suggestions: a.suggestions ?? [] };
 }
 
 /** Turns the first answer of a new lesson into how it starts; `mayAsk` is false once the learner answered. */
@@ -156,25 +164,23 @@ function toPart(a: Answer, q: string, chs: Chapter[], at: number): Part {
   }
   if (!a.steps?.length) throw new Fixable(['extend needs steps']);
   const ch = chs[at];
-  const all = [...ch.steps, ...a.steps];
-  let widget: Widget | undefined;
-  if (a.widget) widget = checkWidget(a.widget, all);
-  else if (a.edits?.length) {
-    const cur = ch.versions[ch.versions.length - 1];
-    if (cur.kind !== 'html' || !cur.html) throw new Fixable(['edits only apply to an html visual; send a whole widget instead']);
+  const lastV = ch.versions.length - 1;
+  const from = ch.from[lastV];
+  let edited: Widget | undefined;
+  if (a.edits?.length && !a.steps[0].scene) {
+    const cur = ch.versions[lastV];
+    if (cur.kind !== 'html' || !cur.html) throw new Fixable(['edits only apply to an html scene; open a new scene on the first new step instead']);
     let html = cur.html;
     for (const e of a.edits) {
       const k = html.indexOf(e.find);
       if (k < 0) throw new Fixable([`an edit's "find" text does not occur in the current html (call read_chapter to see it): ${e.find.slice(0, 80)}`]);
       html = html.slice(0, k) + e.replace + html.slice(k + e.find.length);
     }
-    widget = checkWidget({ kind: 'html', html }, all);
-  } else {
-    // new steps on the same visual must still point at things it has
-    const bad = problems(ch.versions[ch.versions.length - 1], all);
-    if (bad.length) throw new Fixable(bad);
+    edited = { kind: 'html', html };
   }
-  return { ...base, at, steps: a.steps, ...(widget ? { widget, ...(a.task ? { task: a.task } : {}) } : {}) };
+  // new steps before the first scene they open continue the chapter's last scene, so they must fit it
+  checkScenes(a.steps, { widget: edited ?? ch.versions[lastV], steps: ch.steps.slice(from) });
+  return { ...base, at, steps: a.steps, ...(edited ? { edited } : {}) };
 }
 
 async function main() {
@@ -233,6 +239,8 @@ async function main() {
     let json = '';
     let block = '';
     let sent = '';
+    /** how many streamed steps can be played, and the step count and closure it was worked out for */
+    let ready = 0, playAt = '';
     const q = query({
       prompt,
       options: {
@@ -301,20 +309,32 @@ async function main() {
         }
         if (ev?.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta' && block !== READ_TOOL) {
           json += ev.delta.partial_json;
-          const d = parsePartial(json) as (Draft & { widget?: { kind?: string } }) | undefined;
+          const d = parsePartial(json) as (Answer & { suggestions?: unknown }) | undefined;
           if (!d) continue;
-          const { widget, ...rest } = d;
-          const draft: Draft = { mode: rest.mode, title: rest.title, steps: rest.steps, crumbs: rest.crumbs };
-          if (rest.mode === 'text') draft.text = streamingText(json) ?? rest.text;
+          const steps = d.steps ?? [];
+          // the steps are done once a field written after them has begun
+          const closed = 'suggestions' in d || 'edits' in d;
+          if (d.mode === 'chapter') {
+            const at = `${steps.length}|${closed}`;
+            if (at !== playAt) { playAt = at; ready = playableSteps(steps, closed); }
+          } else ready = 0;
+          const draft: Draft = {
+            mode: d.mode, title: d.title, subject: d.subject, crumbs: d.crumbs,
+            // only the playable steps go whole; the rest carry their text, so the draft stays small
+            steps: d.steps && steps.map((st, k) => (k < ready ? st : { text: st.text })),
+            ...(ready ? { ready } : {}),
+          };
+          if (d.mode === 'text') draft.text = streamingText(json) ?? d.text;
           // questions and a course plan arrive whole; only their title or opening line streams
-          if (rest.mode === 'ask') { draft.text = rest.text; setPhase('正在想要先問你什麼…'); }
-          if (rest.mode === 'course') setPhase('正在規劃整課…');
-          const key = `${draft.mode}|${draft.title ?? ''}|${draft.steps?.length ?? 0}|${Math.floor((draft.text?.length ?? 0) / 12)}`;
-          if ((draft.title || draft.text || draft.steps?.length) && key !== sent) {
+          if (d.mode === 'ask') { draft.text = d.text; setPhase('正在想要先問你什麼…'); }
+          if (d.mode === 'course') setPhase('正在規劃整課…');
+          const key = `${draft.mode}|${draft.title ?? ''}|${steps.length}|${ready}|${Math.floor((draft.text?.length ?? 0) / 12)}`;
+          if ((draft.title || draft.text || steps.length) && key !== sent) {
             sent = key; shown.any = true;
             emit({ type: 'partial', lesson: draft });
           }
-          if (widget || (rest as Answer).edits) setPhase(widget?.kind === 'bubble-sort' ? '正在排好要比的數字…' : '正在畫給你看…');
+          const drawing = steps[steps.length - 1]?.scene;
+          if (drawing || d.edits) setPhase(drawing?.kind === 'bubble-sort' ? '正在排好要比的數字…' : '正在畫給你看…');
           else if (draft.text) setPhase('正在回答…');
           else if (draft.steps?.length) setPhase('正在寫步驟…');
         }
@@ -417,13 +437,13 @@ async function main() {
     if (!course || from >= course.outline.length) throw new Error('這一課沒有還沒寫的章節');
     // a resumed session only needs the next chapter asked; a new one first reads the lesson so far
     const plan = course.outline.map((c, k) => `${k + 1}. ${c.title}：${c.goal}`).join('\n');
-    const intro = `這是一堂整課「${course.title}」，你在新的對話裡接手，接下來會一章一章寫下去。課綱：\n${plan}\n\n已經寫好的內容（步驟前的數字是視覺用的步驟編號）：\n\n${outline(chs)}`;
+    const intro = `這是一堂整課「${course.title}」，你在新的對話裡接手，接下來會一章一章寫下去。課綱：\n${plan}\n\n已經寫好的內容（步驟前的「畫面-步驟」是第幾個畫面、畫面裡的第幾步，畫面用的步驟編號從 0 開始）：\n\n${outline(chs)}`;
     await writeCourse(course, from, chs.length, (p) => resumeOr(p, () => `${intro}\n\n${p}`));
     return;
   }
 
   const ask = `${where(chs, at)}\n學生追問：${req.question}`;
-  const fresh = `這是一堂已經在上的課，你在新的對話裡接手。以下是到目前為止的內容（步驟前的數字是視覺用的步驟編號）：\n\n${outline(chs)}\n\n要看某一章現在的完整視覺與步驟，用 read_chapter。\n\n${ask}`;
+  const fresh = `這是一堂已經在上的課，你在新的對話裡接手。以下是到目前為止的內容（步驟前的「畫面-步驟」是第幾個畫面、畫面裡的第幾步，畫面用的步驟編號從 0 開始）：\n\n${outline(chs)}\n\n要看某一章現在的完整視覺與步驟，用 read_chapter。\n\n${ask}`;
   const result = await resumeOr(ask, () => fresh);
   const { value, cost } = await settle(result, (a) => toPart(a, req.question, chs, at));
   emit({ type: 'part', part: value.lesson ? { ...value, lesson: sourced(value.lesson) } : sourced(value), model, cost });

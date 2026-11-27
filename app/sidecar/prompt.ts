@@ -70,23 +70,6 @@ const PLOT = {
   },
 } as const;
 
-const STEP = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['text'],
-  properties: {
-    text: { type: 'string', description: '1-3 short sentences. Wrap the one key idea in **double asterisks**.' },
-    pass: { type: 'integer', minimum: 0, description: 'bubble-sort only: full passes completed when this step is shown' },
-    set: {
-      type: 'array',
-      description: 'plot only: parameters to animate to when this step is shown',
-      items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } },
-    },
-    reveal: { type: 'array', items: { type: 'string' }, description: 'kit visuals (chart, diagram, architecture, timeline, compare, points, passage): ids that appear at this step and stay. Ids never revealed are visible from the start.' },
-    focus: { type: 'array', items: { type: 'string' }, description: 'kit visuals: ids emphasised while this step is shown; everything else dims' },
-  },
-} as const;
-
 const icon = { type: 'string', enum: ICON_NAMES, description: 'a small line illustration' } as const;
 const id = { type: 'string', description: 'short unique id, e.g. "a", "cause1"' } as const;
 const strs = { type: 'array', items: { type: 'string' } } as const;
@@ -186,11 +169,39 @@ const WIDGET = {
   },
 } as const;
 
+const BOARD = obj([], {
+  lines: { ...strs, maxItems: 5, description: 'worked lines, one equation or statement each, plain Unicode maths (× ÷ √ ² ° π ≈), the last one the result' },
+  values: {
+    type: 'array', maxItems: 4, description: 'key quantities shown large',
+    items: obj(['label', 'value'], { label: { type: 'string', description: 'e.g. "射程", "比較次數"' }, value: { type: 'string', description: 'with its unit, e.g. "35.3 m"' } }),
+  },
+}, 'words the host writes beside the visual for this step; stays on later steps of the scene until a step gives a new one ({} clears it)');
+
+const STEP = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['text'],
+  properties: {
+    text: { type: 'string', description: '1-3 short sentences. Wrap the one key idea in **double asterisks**.' },
+    scene: { ...WIDGET, description: 'opens a new scene at this step: the visual this step and the following ones play on. Required on a chapter\'s first step' },
+    task: { type: 'string', description: 'one sentence on what to look at or try now; required on a step that opens a scene, optional later when it changes' },
+    board: BOARD,
+    pass: { type: 'integer', minimum: 0, description: 'bubble-sort only: full passes completed when this step is shown' },
+    set: {
+      type: 'array',
+      description: 'plot only: parameters to animate to when this step is shown',
+      items: { type: 'object', additionalProperties: false, required: ['name', 'value'], properties: { name: { type: 'string' }, value: { type: 'number' } } },
+    },
+    reveal: { type: 'array', items: { type: 'string' }, description: 'kit visuals (chart, diagram, architecture, timeline, compare, points, passage): ids that appear at this step and stay. Ids never revealed are visible from the start.' },
+    focus: { type: 'array', items: { type: 'string' }, description: 'kit visuals: ids emphasised while this step is shown; everything else dims' },
+  },
+} as const;
+
 /**
  * Every answer, the first and each follow-up, uses this one schema, so the tool list Claude sees
  * never changes and a resumed session keeps hitting the prompt cache. Which fields a mode needs is
  * checked in the sidecar. Property order matters: title and steps (or text) stream to the learner
- * before the long widget arrives, so "widget" and "edits" come last.
+ * before its scene arrives, so each step's text comes before its scene, and "edits" come last.
  */
 export const RESPONSE_SCHEMA = {
   type: 'object',
@@ -215,13 +226,11 @@ export const RESPONSE_SCHEMA = {
       type: 'array', minItems: 2, maxItems: 8, description: 'course only: the chapters in teaching order',
       items: obj(['title', 'goal'], { title: { type: 'string', description: 'short chapter title' }, goal: { type: 'string', description: 'one sentence: what the learner will understand after it' } }),
     },
-    steps: { type: 'array', maxItems: 10, items: STEP, description: 'chapter: 3-10 steps; extend: 1-5 steps that continue the chapter' },
-    task: { type: 'string', description: 'chapter (and extend with a redrawn widget): one sentence on what to look at or try' },
+    steps: { type: 'array', maxItems: 12, items: STEP, description: 'chapter: 3-12 steps, the first opening a scene; extend: 1-5 steps that continue the chapter' },
     suggestions: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 3, description: 'chapter, extend, text: short follow-up questions in the learner\'s voice' },
-    widget: { ...WIDGET, description: 'chapter: the visual; extend: a full replacement, only when the visual must change and edits would not do' },
     edits: {
       type: 'array',
-      description: 'extend on an html widget: exact find/replace edits applied in order to its current html',
+      description: 'extend on an html scene: exact find/replace edits applied in order to the current html of the chapter\'s last scene',
       items: {
         type: 'object', additionalProperties: false, required: ['find', 'replace'],
         properties: { find: { type: 'string', description: 'text that occurs exactly once in the current html' }, replace: { type: 'string' } },
@@ -263,20 +272,29 @@ When the learner wants a whole course, or the topic plainly needs several chapte
 
 # Answer modes
 Choose how to answer with "mode", by what teaches best, not by what is shortest. "ask" and "course" are described above; after a new lesson, answer with one of these:
-- "chapter": a new chapter with its own visual: title, subject, crumbs, steps, task, suggestions, widget. The first answer of a lesson is always a chapter. For a follow-up, open a chapter whenever a new picture would help: a worked problem, a new idea, a closer look at one part, an example from another angle. The title is yours to choose: short, names the idea.
-- "extend": more steps in the chapter the learner is reading, continuing its numbering, when the same picture, as it is, carries the answer well: steps (1-5), suggestions. Step indices continue after the chapter's last step. Plot and bubble-sort visuals play new steps with no change. Kit visuals (chart, diagram, architecture, timeline, compare, points, passage) can use "reveal" and "focus" on ids that already exist; if the new steps need new elements, send the whole updated "widget". An html visual needs "edits" (exact find/replace on its current html) that make it handle the new indices while still rendering the earlier ones. Send a whole "widget" (and "task") only when edits would not do.
+- "chapter": a new chapter with its own visuals: title, subject, crumbs, steps (the first opening a scene), suggestions. The first answer of a lesson is always a chapter. For a follow-up, open a chapter whenever a new picture would help: a worked problem, a new idea, a closer look at one part, an example from another angle. The title is yours to choose: short, names the idea.
+- "extend": more steps in the chapter the learner is reading: steps (1-5), suggestions. New steps continue the chapter's last scene, numbered on after its last step, when that picture carries the answer well. Plot and bubble-sort scenes play new steps with no change. Kit scenes (chart, diagram, architecture, timeline, compare, points, passage) can use "reveal" and "focus" on ids that already exist. An html scene needs "edits" (exact find/replace on its current html) that make it handle the new indices while still rendering the earlier ones. When the answer needs a different picture, open a new scene on the first new step instead.
 - "text": a reply in words only, for a short aside, a definition or a check of their thinking that no picture would improve: text, suggestions.
 
-The learner may ask while reading any chapter; the message says which. You can call read_chapter to see a chapter exactly as it is now (its steps and the full current visual, after earlier edits) before you continue or edit it. Call it whenever you are not sure what the current visual contains; never guess the html you edit. If the learner's message reports that a visual broke, call read_chapter, find the cause, and answer with "extend" carrying the repaired "widget" (or "edits") and one short step that says it is fixed.
+The learner may ask while reading any chapter; the message says which. You can call read_chapter to see a chapter exactly as it is now (its steps and the full current visual, after earlier edits) before you continue or edit it. Call it whenever you are not sure what the current visual contains; never guess the html you edit. If the learner's message reports that a visual broke, call read_chapter, find the cause, and answer with "extend": one short step that says it is fixed, carrying "edits" to the html, or opening a repaired scene.
 
 # Steps
-Write the fields in the schema order. The learner starts reading the steps while you are still drawing the widget, so plan the widget first in your head, then write the steps so they match it exactly.
-A chapter is 3 to 10 steps; use more when the topic has several parts. Each step is one idea and changes or points at something on the visual. The first step sets up the picture, the middle steps build the understanding, the last step lands the answer to the question. A step may carry more explanation when the idea is conceptual, but keep it to 1-3 short sentences. Wrap the single most important phrase of a step in **double asterisks**; at most one per step. Never name colours in the text (the learner picks the accent colour); refer to things by their label or role, e.g. 「切線」「虛線」「強調的那張卡」.
+A chapter is 3 to 12 steps; use more when the topic has several parts. Each step is one idea and changes or points at something on the stage. The first step sets up the picture, the middle steps build the understanding, the last step lands the answer to the question. A step may carry more explanation when the idea is conceptual, but keep it to 1-3 short sentences. Wrap the single most important phrase of a step in **double asterisks**; at most one per step. Never name colours in the text (the learner picks the accent colour); refer to things by their label or role, e.g. 「切線」「虛線」「強調的那張卡」.
+
+# Scenes
+The visuals live on the steps. The chapter's first step opens a scene with "scene" (a visual, described below), and the steps after it play on that scene until a step opens another. Open a new scene when the picture itself must change: a different setup, a closer look at one part, a worked example after the idea, a summary or comparison at the end. Most chapters need one or two scenes; do not open one where reveal, focus, set or the scene's own steps would do.
+A scene numbers its steps from 0 at the step that opens it: that is the index U.onStep receives and that "set", "pass", "reveal" and "focus" belong to. Every id a step names must exist in its own scene.
+The learner starts watching a scene as soon as its steps are written, while you write the rest. Write the fields in the schema order: a step's text, then the scene it opens, then the rest of the step. Before you open a scene, plan every step it will carry, draw it completely for all of them, then write those steps to match it exactly.
+A step that opens a scene also gives "task": one sentence on what to look at or try in it. A later step may give a new "task" when what to do changes.
+
+# Words on the stage
+The stage carries the words and numbers too, not only shapes: a learner who looks only at the visual should still see what the step is saying. Label things where they are: a force's name and size on its arrow, a variable next to the quantity it names, the value on its bar, the name of each part. Every number, formula or result a step's text states must be on the stage at that step, on the visual itself or in the step's "board".
+"board" is written by the host beside the visual, so use it freely for working and results, especially for calculations: "lines" are worked lines, one equation each in plain Unicode (× ÷ √ ² ³ ° π ≈ ⇒, no LaTeX), building to the result on the last line, e.g. ["vx = 20 × cos 30° = 17.3 m/s", "vy = 20 × sin 30° = 10 m/s"]; "values" are up to 4 key quantities shown large, each a label and a value with its unit. A board stays on the scene's following steps until a step gives a new one ({} clears it), so give one only when what it shows changes. Plot readouts, code variables and the bubble-sort counters already show live numbers; a board adds the working beside them.
 
 # Visuals
 Pick the visual that makes the idea clearest. Kit visuals fit data, structure, sequences, comparisons and texts. For anything that happens or moves (physics, chemistry, biology processes, mechanisms, geometry, a worked problem with a physical setup) draw your own html and make it move. Do not pick a kit visual just because it is cheaper.
 
-Kit visuals share one step mechanism: every element has an id; a step's "reveal" lists ids that appear at that step and stay (anything never revealed is there from the start), and "focus" lists ids emphasised during that step while the rest dims. Build up the picture with reveal; point with focus. Every id a step names must exist in the visual.
+Kit visuals share one step mechanism: every element has an id; a step's "reveal" lists ids that appear at that step and stay (anything never revealed is there from the start), and "focus" lists ids emphasised during that step while the rest dims. Build up the picture with reveal; point with focus.
 
 1. "chart": data. type "bar" (compare categories; several series for groups), "stacked" (parts of a whole across categories), "line" (change over time), "pie" (shares of one whole, at most 6 slices). Ids: each series id, each label (a category or slice), each mark id. "marks" are short callouts pinned to a category, for the insight the learner should notice. Give a unit and a title with the source year when it matters.
 2. "diagram": ideas and how they connect. Nodes (label, optional short text and icon) joined by arrows (optional label, dashed for weaker or indirect links, both for two-way). layout "flow" (left to right: causes and effects, a process), "down" or "tree" (top to bottom: hierarchy, classification, derivation), "cycle" (a loop in node order: water cycle, business cycle, feedback), "hub" (first node in the middle, the rest around: a concept and its parts), "free" (x, y in 0-100). Edge ids default to "from>to". Keep it to about 3-9 nodes, labels of a few words.
@@ -302,18 +320,18 @@ Kit visuals share one step mechanism: every element has an id; a step's "reveal"
    - It fills its container (100% width and height, transparent background). Prefer one responsive <svg> with a viewBox of about 800 x 500, the stage's own shape; keep every element and label inside it with a 24-unit margin, so nothing is clipped. Labels at 14-18 units.
    - Colours only from the host's CSS variables: --fg (ink), --fg-2 (secondary text), --fg-3 (muted lines), --line (hairlines and grids), --sub (subtle fills), --raise (card fill), --bg (background), --acc (the one accent, for the thing that matters now), --acc-soft (accent tint fill), --done (finished/settled items). Font: inherit. Minimal and calm: thin strokes, one accent.
    - The kit is already loaded as the global U; use it to keep the code short and correct:
-     U.onStep((index, animate) => { ... }) is called with 0 on load and on every step change: render exactly the state that step describes, animating from the previous state only when animate is true.
+     U.onStep((index, animate) => { ... }) is called with 0 on load and on every step change, with the step's index within this scene: render exactly the state that step describes, animating from the previous state only when animate is true.
      U.tween(ms, t => ...) runs an eased animation (t from 0 to 1); a new step finishes running tweens first. U.lerp(a, b, t).
      U.svg(w, h) appends a responsive <svg viewBox="0 0 w h"> to the body. U.el(parent, tag, attrs, text) creates an element. U.text(parent, x, y, str, {size, anchor ('start' by default, or 'middle', 'end'), weight, color}). U.arrow(parent, x1, y1, x2, y2, {color, bend, dashed, both, width}). U.icon(parent, name, cx, cy, size, {color}) draws an icon centred at (cx, cy); U.iconHTML(name, size) returns it as markup for HTML layouts.
      U.mount(kind, spec, steps, parentElement) draws a kit visual inside your own layout, with steps given as [{reveal, focus}, ...].
      Without the kit, listen for window.postMessage({ type: "step", index, animate }) yourself and render step 0 on load.
-   - Mathematics and science should move: grow, slide, trace, rearrange, flow. Show changing numbers next to the picture.
+   - Mathematics and science should move: grow, slide, trace, rearrange, flow. Label what moves and show its changing numbers right next to it (U.text at 14-18 units): the name and size on each arrow, the value at each point, the unit with every number.
    - Write the state of each step as an explicit array, one entry per step (e.g. const S = [{a: 10, b: 20, note: '平衡'}, ...]), holding every number and label that step's text mentions, and draw from S[index]; animate by tweening between S[previous] and S[index]. Never derive a step's state from a continuous time function with thresholds: it puts boundary steps on the wrong side. Then check each step's text against its entry: the picture must show exactly what the text says.
    - Keep it under about 10 KB. Make sure every step index you write is handled.
 
 Icons (for nodes, points, events, columns and U.icon) are small line illustrations; use them to make a visual friendlier and easier to scan, one per element at most, only where they mean something. Available names: ${ICON_NAMES.join(', ')}.
 
-"task" is one sentence telling the learner what to look at or try. "suggestions" are 2-3 short follow-up questions in the learner's voice, for every mode.`;
+"suggestions" are 2-3 short follow-up questions in the learner's voice, for every mode.`;
 
 /**
  * Added to the system prompt of a lesson with reference folders. The folders never change during a

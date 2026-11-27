@@ -2,7 +2,7 @@
 // Each one is checked with the same checks the sidecar runs. Usage: bun showcase/lessons/make.ts
 import fs from 'fs';
 import path from 'path';
-import { problems } from '../../app/sidecar/check.ts';
+import { lessonProblems } from '../../app/sidecar/check.ts';
 import type { Lesson, LessonRecord } from '../../app/src/lesson.ts';
 
 const L = (o: Lesson & { question: string }) => o;
@@ -127,7 +127,7 @@ const dir = path.join(process.env.APPDATA!, 'app.unfold.desktop', 'lessons');
 fs.mkdirSync(dir, { recursive: true });
 let t = Date.now();
 for (const { question, ...lesson } of lessons) {
-  const bad = problems(lesson.widget, lesson.steps);
+  const bad = lessonProblems(lesson);
   if (bad.length) throw new Error(`${lesson.title}: ${bad.join('; ')}`);
   const id = (t++).toString(16);
   const rec: LessonRecord = { id, question, status: 'ready', createdAt: t, step: 0, lesson, model: 'showcase' };

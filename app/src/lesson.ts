@@ -21,6 +21,16 @@ export const SUBJECT_LABEL: Record<Subject, string> = {
 
 export interface Step {
   text: string;
+  /**
+   * opens a new scene at this step: the visual this step and the ones after it play on, until a
+   * later step opens another. Its steps are numbered from 0 within the scene. The first step of a
+   * chapter always opens one (chapters saved before scenes existed keep theirs in Lesson.widget).
+   */
+  scene?: Widget;
+  /** what to look at or try now, shown above the visual until a later step changes it */
+  task?: string;
+  /** words beside the visual for this step; kept on later steps of the scene until one gives its own */
+  board?: Board;
   /** bubble-sort: full passes completed when this step is shown */
   pass?: number;
   /** plot: parameter values to animate to when this step is shown */
@@ -29,6 +39,18 @@ export interface Step {
   reveal?: string[];
   /** kit visuals: ids emphasised while this step is shown */
   focus?: string[];
+}
+
+/**
+ * What the host writes beside the visual for a step, so the numbers and working the step talks
+ * about are on screen without the visual having to place them: worked lines, then key values.
+ * An empty board clears the one carried over from earlier steps.
+ */
+export interface Board {
+  /** worked lines, top to bottom, e.g. "vx = 20 × cos 30° = 17.3 m/s"; the last is the result */
+  lines?: string[];
+  /** a few key quantities shown as large numbers */
+  values?: { label: string; value: string }[];
 }
 
 /** The declarative visuals the kit draws (src/kit/runtime.js); their ids are what steps reveal and focus. */
@@ -163,9 +185,11 @@ export interface Lesson {
   title: string;
   subject: Subject;
   crumbs: string[];
-  widget: Widget;
+  /** saved before scenes existed: the chapter's one visual (now the first step's scene) */
+  widget?: Widget;
   steps: Step[];
-  task: string;
+  /** saved before scenes existed: what to try (now each step's task) */
+  task?: string;
   suggestions: string[];
   /** files Claude read from the reference folders to write it, relative to their folder */
   sources?: string[];
@@ -202,9 +226,11 @@ export interface Part {
   at?: number;
   /** extend: the steps added, numbered on after the chapter's own */
   steps?: Step[];
-  /** extend: the redrawn visual, when the visual changes (it still plays the earlier steps) */
+  /** extend: the chapter's last scene with Claude's html edits applied; the new steps play on it, numbered on */
+  edited?: Widget;
+  /** extend, saved before scenes existed: a redrawn visual that plays the chapter's every step from 0 */
   widget?: Widget;
-  /** extend: what to try on the redrawn visual */
+  /** extend, saved before scenes existed: what to try on the redrawn visual */
   task?: string;
   /** text: the reply */
   text?: string;
@@ -235,8 +261,12 @@ export interface Course {
   outline: { title: string; goal: string }[];
 }
 
-/** What Claude streams before it finishes: enough to show the reply as it is written. */
-export type Draft = Partial<Lesson> & { mode?: Mode | 'ask' | 'course'; text?: string };
+/**
+ * What Claude streams before it finishes: enough to show the reply as it is written. A chapter's
+ * first `ready` steps are whole and checked, scenes included, and can be played while the rest is
+ * still written; the steps after them carry only their text so far.
+ */
+export type Draft = Partial<Lesson> & { mode?: Mode | 'ask' | 'course'; text?: string; ready?: number };
 
 /** A follow-up still being written, or one that failed. */
 export interface Pending {

@@ -4,7 +4,7 @@
 // Usage: bun showcase/lessons/import-eval.ts <runDir> [<runDir> ...]
 import fs from 'fs';
 import path from 'path';
-import { problems } from '../../app/sidecar/check.ts';
+import { lessonProblems } from '../../app/sidecar/check.ts';
 import type { Lesson, LessonRecord } from '../../app/src/lesson.ts';
 
 const runs = process.argv.slice(2);
@@ -24,7 +24,7 @@ for (const run of runs) {
 let t = Date.now();
 for (const [question, { lesson, cost, model }] of byQ) {
   if (have.has(question)) { console.log('skip', question); continue; }
-  const bad = problems(lesson.widget, lesson.steps);
+  const bad = lessonProblems(lesson);
   if (bad.length) { console.log('bad ', question, bad.join('; ')); continue; }
   const id = (t++).toString(16);
   const rec: LessonRecord = { id, question, status: 'ready', createdAt: t, step: 0, lesson, model: model ?? 'eval', ...(cost ? { cost } : {}) };
