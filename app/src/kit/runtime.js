@@ -164,8 +164,8 @@
   .u-node.u-hover-rel{opacity:1!important}
   .u-node.u-hover-dim{opacity:.32!important}
   .u-node.v{flex-direction:column;text-align:center;gap:5px;padding:11px 13px}
-  .u-node b{font-weight:600;display:block}
-  .u-node small{display:block;color:var(--fg-2);font-size:12px;margin-top:2px}
+  .u-node b{font-weight:600;display:block;text-wrap:balance}
+  .u-node small{display:block;color:var(--fg-2);font-size:12px;margin-top:2px;text-wrap:balance}
   .u-elabel{font-size:12px;fill:var(--fg-2)}
   .u-edge .u-shaft{transition:stroke-dashoffset .65s cubic-bezier(.2,.7,.2,1),stroke .3s,stroke-width .3s}
   .u-edge.u-focus path{stroke:var(--acc)!important;fill:var(--acc)}
@@ -197,14 +197,25 @@
   /* architecture */
   .u-grp{position:absolute;border-radius:14px;box-sizing:border-box;background:color-mix(in srgb,var(--sub) 65%,transparent);box-shadow:inset 0 0 0 1px var(--line)}
   .u-grp.u-hid{transform:scale(.985)}
-  .u-grp-h{position:absolute;left:12px;top:7px;right:12px;display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.2;color:var(--fg-3);white-space:nowrap;overflow:hidden}
+  .u-grp-h{position:absolute;z-index:1;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:7px;box-sizing:border-box;font-size:12px;line-height:1.2;color:var(--fg-3);white-space:nowrap;overflow:hidden;background:color-mix(in srgb,var(--sub) 65%,var(--bg));transition:opacity .48s cubic-bezier(.2,.7,.2,1),color .3s,background-color .3s}
   .u-grp-h b{font-weight:600;color:var(--fg-2);letter-spacing:.02em}
   .u-grp-h small{font-size:11.5px;color:var(--fg-3);overflow:hidden;text-overflow:ellipsis}
   .u-grp.u-focus{background:color-mix(in srgb,var(--acc-soft) 60%,transparent);box-shadow:inset 0 0 0 1.5px var(--acc)}
-  .u-grp.u-focus .u-grp-h,.u-grp.u-focus .u-grp-h b{color:var(--acc-ink,var(--acc))}
+  .u-grp-h.u-focus{background:color-mix(in srgb,var(--acc-soft) 60%,var(--bg))}
+  .u-grp-h.u-focus,.u-grp-h.u-focus b{color:var(--acc-ink,var(--acc))}
+  .u-grp-h.u-dim{opacity:.6}
   .u-node.ext{background:transparent;box-shadow:none;outline:1.2px dashed var(--fg-3);outline-offset:-1px}
   .u-node.ext.u-focus{outline-color:var(--acc);box-shadow:none}
   .u-arch .u-node{font-size:13.5px}
+  .u-arch .u-node.u-dim{opacity:.55}
+  .u-arch .u-node.u-dim .u-ic{opacity:.7}
+  .u-arch .u-edge.u-dim{opacity:.5}
+  .u-arch>svg.u-labels{z-index:7;pointer-events:none}
+  .u-elab-bg{fill:var(--bg);stroke:var(--line);stroke-width:.8;transition:stroke .3s}
+  .u-arch .u-elab.u-dim,.u-arch .u-elab.u-hover-dim{opacity:1!important}
+  .u-elab.u-dim .u-elabel,.u-elab.u-hover-dim .u-elabel{fill:var(--fg-4)}
+  .u-elab.u-focus .u-elab-bg,.u-elab.u-hover-rel .u-elab-bg{stroke:color-mix(in srgb,var(--acc) 45%,var(--line))}
+  .u-elab.u-hover-rel .u-elabel{fill:var(--acc)}
   /* chart */
   .u-ch{flex:1;min-height:0;position:relative}
   .u-legend{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-2)}
@@ -724,11 +735,10 @@
       const el = els[nid];
       el.addEventListener('mouseenter', () => {
         const adj = new Set([nid]);
-        edgeEls.forEach(({ e, g }) => {
+        edgeEls.forEach(({ e, g, lab }) => {
           const rel = e.from === nid || e.to === nid;
           if (rel) { adj.add(e.from); adj.add(e.to); }
-          g.classList.toggle('u-hover-rel', rel);
-          g.classList.toggle('u-hover-dim', !rel);
+          for (const x of lab ? [g, lab] : [g]) { x.classList.toggle('u-hover-rel', rel); x.classList.toggle('u-hover-dim', !rel); }
         });
         for (const id in els) {
           els[id].classList.toggle('u-hover-rel', adj.has(id));
@@ -736,7 +746,7 @@
         }
       });
       el.addEventListener('mouseleave', () => {
-        edgeEls.forEach(({ g }) => g.classList.remove('u-hover-rel', 'u-hover-dim'));
+        edgeEls.forEach(({ g, lab }) => { g.classList.remove('u-hover-rel', 'u-hover-dim'); if (lab) lab.classList.remove('u-hover-rel', 'u-hover-dim'); });
         for (const id in els) els[id].classList.remove('u-hover-rel', 'u-hover-dim');
       });
     }
@@ -857,17 +867,29 @@
     sized(box, (W, H) => {
       box.innerHTML = '';
       const reg = {};
-      const B = Math.max(1, bands.length), gap = across ? 16 : 12, head = 28, pad = 2;
+      const B = Math.max(1, bands.length), head = 28, pad = 2;
+      // the gap after band i holds one lane per connection that crosses it
+      const crossing = bands.map(() => 0);
+      edges.forEach((e) => {
+        const p = band[e.from], q = band[e.to];
+        if (!p || !q || p.i === q.i) return;
+        const lo = Math.min(p.i, q.i), hi = Math.max(p.i, q.i);
+        crossing[lo]++;
+        if (hi - lo > 1) crossing[hi - 1]++;
+      });
+      const gaps = bands.slice(0, -1).map((_, i) => Math.max(across ? 18 : 16, Math.min(44, 10 + crossing[i] * 7)));
+      const span = (across ? W : H) - 2 * pad - gaps.reduce((a, b) => a + b, 0);
+      let at = pad;
       const rects = bands.map((_, i) => {
-        if (across) { const bw = (W - 2 * pad - (B - 1) * gap) / B; return { x: pad + i * (bw + gap), y: pad, w: bw, h: H - 2 * pad }; }
-        const bh = (H - 2 * pad - (B - 1) * gap) / B;
-        return { x: pad, y: pad + i * (bh + gap), w: W - 2 * pad, h: bh };
+        const size = span / B, r = across ? { x: at, y: pad, w: size, h: H - 2 * pad } : { x: pad, y: at, w: W - 2 * pad, h: size };
+        at += size + (gaps[i] || 0);
+        return r;
       });
       const grpEls = {};
       bands.forEach((b, i) => {
         if (!b.g) return;
         const r = rects[i];
-        const d = h('div', 'u-grp', `<span class="u-grp-h">${b.g.icon ? U.iconHTML(b.g.icon, 14) : ''}<b>${md(b.g.label)}</b>${b.g.text ? `<small>${md(b.g.text)}</small>` : ''}</span>`);
+        const d = h('div', 'u-grp');
         Object.assign(d.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
         box.appendChild(d);
         grpEls[b.g.id] = d;
@@ -875,13 +897,24 @@
       });
       const svg = U.svg(W, H, box);
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      // headings sit above the lines, so a line passes behind a heading, never through it
+      const heads = [];
+      bands.forEach((b, i) => {
+        if (!b.g) return;
+        const r = rects[i];
+        const d = h('span', 'u-grp-h', `${b.g.icon ? U.iconHTML(b.g.icon, 14) : ''}<b>${md(b.g.label)}</b>${b.g.text ? `<small>${md(b.g.text)}</small>` : ''}`);
+        Object.assign(d.style, { left: `${r.x + 8}px`, top: `${r.y + 5}px`, maxWidth: `${r.w - 16}px` });
+        box.appendChild(d);
+        heads.push(d);
+        put(reg, b.g.id, d);
+      });
       const els = {};
       bands.forEach((b, i) => {
         const r = rects[i], n = b.nodes.length, top = b.g ? head : 0;
         b.nodes.forEach((nd, k) => {
           let x, y, maxW;
-          if (across) { const ch = (r.h - top) / n; x = r.x + r.w / 2; y = r.y + top + ch * (k + 0.5); maxW = Math.min(210, r.w - 20); }
-          else { const cw = r.w / n; x = r.x + cw * (k + 0.5); y = r.y + top + (r.h - top - 6) / 2; maxW = Math.min(210, cw - 16); }
+          if (across) { const ch = (r.h - top) / n; x = r.x + r.w / 2; y = r.y + top + ch * (k + 0.5); maxW = Math.min(220, r.w - 24); }
+          else { const cw = r.w / n; x = r.x + cw * (k + 0.5); y = r.y + top + (r.h - top - 6) / 2; maxW = Math.min(220, cw - 20); }
           const d = nodeEl(nd, !!nd.icon && !across && maxW < 150, nd.kind === 'external' ? ' ext' : '');
           d.style.left = `${x}px`;
           d.style.top = `${y}px`;
@@ -892,13 +925,34 @@
         });
       });
       clampNodes(box, els, W, H);
-      edgeEls = drawEdges(svg, box, edges, els, shapes, reg, (e, a, b) => {
-        if (e.bend != null) return e.bend;
-        const p = band[e.from], q = band[e.to];
-        // within one band, skipping over a neighbour: arc around it
-        if (p && q && p.i === q.i && Math.abs(p.k - q.k) > 1) return (across ? (b.y > a.y ? 1 : -1) : (b.x > a.x ? 1 : -1)) * 0.22;
-        return null;
+      // node boxes from layout, not from the screen, so a scaled (hidden) node measures true
+      const rect = {};
+      for (const id in els) {
+        const d = els[id], w = d.offsetWidth, hh = d.offsetHeight;
+        rect[id] = { x: parseFloat(d.style.left) - w / 2, y: parseFloat(d.style.top) - hh / 2, w, h: hh };
+      }
+      const routes = routeArch(edges, rect, band, bands, rects, across);
+      edgeEls = [];
+      edges.forEach((e) => {
+        const pts = routes[e.id];
+        if (!pts || pts.length < 2) return;
+        const g = polyArrow(svg, pts, { dashed: e.dashed, both: e.both, class: 'u-edge' });
+        const len = g.shaft.getTotalLength ? Math.ceil(g.shaft.getTotalLength()) : 0;
+        if (len > 0) g.dataset.drawLen = String(len);
+        const dot = U.el(g, 'circle', { r: 3.6, class: 'u-pulse' });
+        U.el(dot, 'animateMotion', { dur: `${Math.max(0.9, Math.min(2.4, len / 160)).toFixed(2)}s`, repeatCount: 'indefinite', path: g.shaft.getAttribute('d') });
+        put(reg, e.id, g);
+        edgeEls.push({ e, g });
       });
+      const lsvg = U.svg(W, H, box);
+      lsvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      lsvg.classList.add('u-labels');
+      const blocks = [
+        ...Object.values(rect).map((r) => ({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 })),
+        ...heads.map((d) => ({ x: d.offsetLeft - 2, y: d.offsetTop - 2, w: d.offsetWidth + 4, h: d.offsetHeight + 4 })),
+      ];
+      placeLabels(lsvg, edgeEls, blocks, W, H);
+      edgeEls.forEach((it) => { if (it.lab) put(reg, it.e.id, it.lab); });
       hoverLinks(els, edgeEls);
       missing(reg, steps);
       apply = stepper(reg, eff, (_, focus) => {
@@ -916,6 +970,179 @@
     });
     replayHandlers.push((idx) => { redraw(edgeEls); apply(idx); });
     return (i) => apply(i);
+  }
+  /**
+   * Routes architecture connections as right-angled lines between ports on the node sides, in
+   * flow space (bands stack along y; "right" layouts are drawn transposed). Connections between
+   * bands run their crossing leg in the gap between the bands, each in a lane of its own; ones
+   * inside a band either join neighbours side to side or pass underneath the band's components.
+   * Returns { id: [[x, y], ...] } in box coordinates.
+   */
+  function routeArch(edges, rect, bandOf, bands, rects, across) {
+    const F = across ? (r) => ({ x: r.y, y: r.x, w: r.h, h: r.w }) : (r) => r;
+    const P = across ? (p) => [p[1], p[0]] : (p) => p;
+    const nr = {};
+    for (const id in rect) nr[id] = F(rect[id]);
+    const br = rects.map(F);
+    const M = 5; // ports sit this far off the node
+    const plan = edges.filter((e) => nr[e.from] && nr[e.to] && e.from !== e.to).map((e) => {
+      const p = bandOf[e.from], q = bandOf[e.to];
+      if (p.i === q.i) {
+        if (Math.abs(p.k - q.k) === 1) { const right = q.k > p.k; return { e, kind: 'side', s: right ? 'r' : 'l', t: right ? 'l' : 'r' }; }
+        return { e, kind: 'under', s: 'b', t: 'b' };
+      }
+      const down = q.i > p.i;
+      return { e, kind: 'cross', s: down ? 'b' : 't', t: down ? 't' : 'b', down };
+    });
+    // spread several ports on one side, ordered by where the other end lies
+    const cx = (id) => nr[id].x + nr[id].w / 2, cy = (id) => nr[id].y + nr[id].h / 2;
+    const req = {};
+    plan.forEach((pl) => {
+      [['s', pl.e.from, pl.e.to], ['t', pl.e.to, pl.e.from]].forEach(([end, id, other]) => {
+        const side = pl[end];
+        (req[`${id}|${side}`] = req[`${id}|${side}`] || []).push({ pl, end, key: side === 'l' || side === 'r' ? cy(other) : cx(other) });
+      });
+    });
+    for (const k in req) {
+      const [id, side] = k.split('|'), r = nr[id], list = req[k].sort((a, b) => a.key - b.key), n = list.length;
+      const vert = side === 'l' || side === 'r', len = vert ? r.h : r.w;
+      const step = n > 1 ? Math.min(vert ? 12 : 22, (len - 18) / (n - 1)) : 0;
+      list.forEach((o, j) => {
+        const off = (j - (n - 1) / 2) * step;
+        o.pl[`${o.end}p`] = side === 't' ? [r.x + r.w / 2 + off, r.y - M] : side === 'b' ? [r.x + r.w / 2 + off, r.y + r.h + M]
+          : side === 'l' ? [r.x - M, r.y + r.h / 2 + off] : [r.x + r.w + M, r.y + r.h / 2 + off];
+      });
+    }
+    // a crossing whose ends nearly line up runs straight
+    plan.forEach((pl) => {
+      if (pl.kind !== 'cross') return;
+      const t = nr[pl.e.to];
+      const near = (req[`${pl.e.to}|${pl.t}`] || []).some((o) => o.pl !== pl && Math.abs(o.pl[`${o.end}p`][0] - pl.sp[0]) < 12);
+      if (!near && Math.abs(pl.sp[0] - pl.tp[0]) < 14 && pl.sp[0] > t.x + 8 && pl.sp[0] < t.x + t.w - 8) pl.tp[0] = pl.sp[0];
+    });
+    // a crossing over a band: find a column clear of that band's components
+    const clear = (x, from, to) => { for (let b = from; b <= to; b++) for (const id in nr) if (bandOf[id].i === b && x > nr[id].x - 10 && x < nr[id].x + nr[id].w + 10) return false; return true; };
+    plan.forEach((pl) => {
+      if (pl.kind !== 'cross') return;
+      const i = bandOf[pl.e.from].i, j = bandOf[pl.e.to].i;
+      if (Math.abs(i - j) < 2) return;
+      const lo = Math.min(i, j) + 1, hi = Math.max(i, j) - 1;
+      const cand = [pl.tp[0], pl.sp[0]];
+      for (let b = lo; b <= hi; b++) {
+        const xs = Object.keys(nr).filter((id) => bandOf[id].i === b).map((id) => nr[id]).sort((a, c) => a.x - c.x);
+        cand.push(br[b].x + 10, br[b].x + br[b].w - 10);
+        for (let k = 1; k < xs.length; k++) cand.push((xs[k - 1].x + xs[k - 1].w + xs[k].x) / 2);
+      }
+      const ok = cand.filter((x) => clear(x, lo, hi));
+      pl.dx = (ok.length ? ok : cand).sort((a, c) => Math.abs(a - pl.sp[0]) + Math.abs(a - pl.tp[0]) - Math.abs(c - pl.sp[0]) - Math.abs(c - pl.tp[0]))[0];
+    });
+    // lanes: every horizontal run gets its own track in the gap it uses
+    const runs = {};
+    const addRun = (key, pl, slot, a, b) => (runs[key] = runs[key] || []).push({ pl, slot, lo: Math.min(a, b), hi: Math.max(a, b) });
+    plan.forEach((pl) => {
+      const i = bandOf[pl.e.from].i, j = bandOf[pl.e.to].i;
+      if (pl.kind === 'under') addRun(`u${i}`, pl, 'y1', pl.sp[0], pl.tp[0]);
+      if (pl.kind !== 'cross') return;
+      const c1 = pl.down ? i : i - 1, c2 = pl.down ? j - 1 : j;
+      if (pl.dx == null) { if (pl.sp[0] !== pl.tp[0]) addRun(`c${c1}`, pl, 'y1', pl.sp[0], pl.tp[0]); }
+      else { addRun(`c${c1}`, pl, 'y1', pl.sp[0], pl.dx); addRun(`c${c2}`, pl, 'y2', pl.dx, pl.tp[0]); }
+      pl.c1 = c1; pl.c2 = c2;
+    });
+    for (const key in runs) {
+      const list = runs[key].sort((a, b) => a.lo - b.lo), lanes = [];
+      list.forEach((r) => { let L = lanes.findIndex((end) => end < r.lo - 10); if (L < 0) { L = lanes.length; lanes.push(0); } lanes[L] = r.hi; r.lane = L; });
+      const n = lanes.length;
+      let at;
+      if (key[0] === 'c') {
+        const c = +key.slice(1), top = br[c].y + br[c].h, bot = br[c + 1].y, mid = (top + bot) / 2, st = Math.min(7, (bot - top - 6) / Math.max(1, n));
+        at = (L) => mid + (L - (n - 1) / 2) * st;
+      } else {
+        const b = +key.slice(1), ids = Object.keys(nr).filter((id) => bandOf[id].i === b);
+        const base = Math.max(...ids.map((id) => nr[id].y + nr[id].h)) + 12, lim = br[b].y + br[b].h - 5;
+        at = (L) => Math.min(lim, base + L * 7);
+      }
+      list.forEach((r) => (r.pl[r.slot] = at(r.lane)));
+    }
+    const out = {};
+    plan.forEach((pl) => {
+      const s = pl.sp, t = pl.tp;
+      let pts;
+      if (pl.kind === 'side') pts = Math.abs(s[1] - t[1]) < 1 ? [s, t] : [s, [(s[0] + t[0]) / 2, s[1]], [(s[0] + t[0]) / 2, t[1]], t];
+      else if (pl.kind === 'under') pts = [s, [s[0], pl.y1], [t[0], pl.y1], t];
+      else if (pl.dx == null) pts = s[0] === t[0] ? [s, t] : [s, [s[0], pl.y1], [t[0], pl.y1], t];
+      else pts = [s, [s[0], pl.y1], [pl.dx, pl.y1], [pl.dx, pl.y2], [t[0], pl.y2], t];
+      out[pl.e.id] = pts.filter((p, k) => k === 0 || Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) > 0.5).map(P);
+    });
+    return out;
+  }
+  /** A right-angled arrow through `pts`, corners rounded. */
+  function polyArrow(parent, pts, o = {}) {
+    const g = U.el(parent, 'g', { class: o.class || null });
+    const color = 'var(--fg-3)', head = 7;
+    const last = pts[pts.length - 1], prev = pts[pts.length - 2];
+    const seg = (a, b) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l, l]; };
+    const [ux, uy] = seg(prev, last);
+    const p = pts.map((q) => [...q]);
+    p[p.length - 1] = [last[0] - ux * head * 0.9, last[1] - uy * head * 0.9];
+    let first = pts[0];
+    const [vx, vy] = seg(pts[1], pts[0]);
+    if (o.both) p[0] = [first[0] - vx * head * 0.9, first[1] - vy * head * 0.9];
+    let d = `M${p[0][0]} ${p[0][1]}`;
+    for (let k = 1; k < p.length - 1; k++) {
+      const [ax, ay, la] = seg(p[k], p[k - 1]), [bx, by, lb] = seg(p[k], p[k + 1]);
+      const r = Math.min(9, la / 2, lb / 2);
+      d += `L${p[k][0] + ax * r} ${p[k][1] + ay * r}Q${p[k][0]} ${p[k][1]} ${p[k][0] + bx * r} ${p[k][1] + by * r}`;
+    }
+    d += `L${p[p.length - 1][0]} ${p[p.length - 1][1]}`;
+    g.shaft = U.el(g, 'path', { d, fill: 'none', stroke: color, 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': o.dashed ? '5 5' : null, class: o.dashed ? 'u-shaft u-dash' : 'u-shaft' });
+    const tip = (x, y, dx, dy) => U.el(g, 'path', { d: `M${x} ${y}L${x - dx * head - dy * head * 0.55} ${y - dy * head + dx * head * 0.55}L${x - dx * head + dy * head * 0.55} ${y - dy * head - dx * head * 0.55}z`, fill: color, stroke: color, 'stroke-width': 1, 'stroke-linejoin': 'round', class: 'u-head' });
+    tip(last[0], last[1], ux, uy);
+    if (o.both) tip(first[0], first[1], vx, vy);
+    g.pts = pts;
+    return g;
+  }
+  /** A point at fraction f of a polyline's length. */
+  function along(pts, f) {
+    const ls = pts.slice(1).map((q, k) => Math.hypot(q[0] - pts[k][0], q[1] - pts[k][1]));
+    let rest = ls.reduce((a, b) => a + b, 0) * f;
+    for (let k = 0; k < ls.length; k++) {
+      if (rest <= ls[k] || k === ls.length - 1) { const t = ls[k] ? Math.min(1, rest / ls[k]) : 0; return [pts[k][0] + (pts[k + 1][0] - pts[k][0]) * t, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * t]; }
+      rest -= ls[k];
+    }
+    return pts[0];
+  }
+  /** Puts each label on its line where it covers no component, group heading or other label. */
+  function placeLabels(lsvg, list, blocks, W, H) {
+    const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const taken = [];
+    const fr = [0.5, 0.4, 0.6, 0.3, 0.7, 0.22, 0.78, 0.15, 0.85, 0.1, 0.9];
+    const OFFS = [];
+    for (const a of [0, 0.6, -0.6, 1.1, -1.1, 1.8, -1.8]) for (const b of [0, 0.7, -0.7, 1.4, -1.4, 2.2, -2.2, 3, -3]) OFFS.push([a, b]);
+    list.forEach((it) => {
+      if (!it.e.label) return;
+      const lg = U.el(lsvg, 'g', { class: 'u-edge u-elab' });
+      const bg = U.el(lg, 'rect', { rx: 6, class: 'u-elab-bg' });
+      const t = U.text(lg, 0, 0, it.e.label, { anchor: 'middle', class: 'u-elabel' });
+      const bb = t.getBBox(), w = bb.width + 12, hh = bb.height + 5;
+      let best = null, bestCost = Infinity;
+      for (const f of fr) {
+        const [x, y] = along(it.g.pts, f);
+        for (const [ox, oy] of OFFS.map(([a, b]) => [a * w, b * hh])) {
+          const r = { x: x + ox - w / 2, y: y + oy - hh / 2, w, h: hh };
+          if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) continue;
+          const bad = blocks.filter((b) => hit(r, b)).length * 10 + taken.filter((b) => hit(r, b)).length * 10;
+          const cost = bad + Math.abs(f - 0.5) + Math.hypot(ox / w, oy / hh) * 0.9;
+          if (cost < bestCost) { bestCost = cost; best = r; }
+        }
+        if (bestCost < 1) break;
+      }
+      if (!best) { const [x, y] = along(it.g.pts, 0.5); best = { x: x - w / 2, y: y - hh / 2, w, h: hh }; }
+      taken.push(best);
+      t.setAttribute('x', best.x + w / 2);
+      t.setAttribute('y', best.y + hh / 2);
+      Object.entries({ x: best.x, y: best.y, width: w, height: hh }).forEach(([k, v]) => bg.setAttribute(k, v));
+      it.lab = lg;
+    });
   }
   function place(nodes, edges, layout, W, H) {
     const pos = {};
