@@ -1,6 +1,6 @@
 // Backend access. Inside Tauri this calls the Rust commands; in a plain browser (design review,
 // screenshots) it falls back to an in-memory store seeded with recorded lessons.
-import type { Answer, LessonEvent, LessonMeta, LessonRecord, Part } from './lesson';
+import type { Answer, Lesson, LessonEvent, LessonMeta, LessonRecord, Part } from './lesson';
 import type { Gen } from './settings';
 import { chaptersOf, courseWritten, itemsOf } from './chapters';
 import bubble from '../fixtures/bubble.json';
@@ -22,6 +22,7 @@ export interface Api {
   /** a follow-up asked while reading `chapter` (0-based) */
   continueLesson(id: string, question: string, gen: Gen | undefined, chapter: number): Promise<void>;
   renameChapter(id: string, chapter: number, name: string): Promise<void>;
+  deleteLesson(id: string): Promise<void>;
   cancelLesson(id: string): Promise<void>;
   claudeStatus(): Promise<string>;
   openLink(url: string): Promise<void>;
@@ -41,6 +42,7 @@ function tauriApi(): Api {
     continueCourse: (id, gen) => call('continue_course', { id, model: gen?.model, effort: gen?.effort }),
     continueLesson: (id, question, gen, chapter) => call('continue_lesson', { id, question, model: gen?.model, effort: gen?.effort, chapter }),
     renameChapter: (id, chapter, name) => call('rename_chapter', { id, chapter, name }),
+    deleteLesson: (id) => call('delete_lesson', { id }),
     cancelLesson: (id) => call('cancel_lesson', { id }),
     claudeStatus: () => call('claude_status'),
     openLink: (url) => call('open_link', { url }),
@@ -66,6 +68,85 @@ const PREVIEW_ASK = {
 /** Browser preview only: a made-up cost so the cost line has something to show. */
 const PREVIEW_COST = { usd: 0.0214, input: 3, output: 2870, cacheRead: 11200, cacheWrite: 4100 };
 
+/** Preview-only lessons demonstrating the code walkthrough and interactive quiz kit visuals. */
+const PREVIEW_CODE: Lesson = {
+  title: '二分搜尋：每次砍掉一半',
+  subject: 'algorithm',
+  crumbs: ['演算法', '搜尋'],
+  task: '觀察每一輪 `lo`、`hi` 與 `mid` 如何夾逼目標值 `13`，也可以點擊右側狀態列對照。',
+  suggestions: ['為什麼條件是 lo <= hi 而不是 lo < hi？', '如果陣列沒排好順序會發生什麼？', '出幾題小測驗考考我'],
+  steps: [
+    { text: '要在已排序陣列 `[2, 5, 8, 13, 21, 34]` 中找 `13`，我們先設左右界 `lo = 0`、`hi = 5`。', focus: ['s0'] },
+    { text: '算出中間索引 `mid = 2`，讀到 `arr[2] = 8`。因為 **8 比目標 13 小**，左半邊全部不可能。', focus: ['s1'] },
+    { text: '把左界一口氣推到 `lo = mid + 1 = 3`，直接**丟掉前半段三個元素**。', focus: ['s2'] },
+    { text: '新一輪 `mid = 4`，讀到 `arr[4] = 21`。這次比 13 大，所以把右界拉回 `hi = 3`。', focus: ['s3'] },
+    { text: '最後只剩 `lo = hi = 3`，`arr[3]` 剛好是 `13`，**只比較 3 次就找到答案**，複雜度是 `O(log n)`。', focus: ['s4'] },
+  ],
+  widget: {
+    kind: 'code',
+    code: {
+      title: 'binary_search.py',
+      language: 'python',
+      lines: [
+        'def binary_search(arr, target):',
+        '    lo, hi = 0, len(arr) - 1',
+        '    while lo <= hi:',
+        '        mid = (lo + hi) // 2',
+        '        if arr[mid] == target:',
+        '            return mid',
+        '        elif arr[mid] < target:',
+        '            lo = mid + 1',
+        '        else:',
+        '            hi = mid - 1',
+        '    return -1',
+      ],
+      states: [
+        { id: 's0', lines: [2], vars: { arr: '[2, 5, 8, 13, 21, 34]', target: '13', lo: '0', hi: '5' }, note: '搜尋區間涵蓋整個陣列 [0..5]' },
+        { id: 's1', lines: [4, 7], vars: { lo: '0', hi: '5', mid: '2', 'arr[mid]': '8' }, note: '8 < 13，目標一定在右半邊' },
+        { id: 's2', lines: [8], vars: { lo: '3', hi: '5', mid: '2', 'arr[mid]': '8' }, note: '排除索引 0、1、2' },
+        { id: 's3', lines: [4, 9, 10], vars: { lo: '3', hi: '3', mid: '4', 'arr[mid]': '21' }, note: '21 > 13，將右界縮到 mid - 1' },
+        { id: 's4', lines: [4, 5, 6], vars: { lo: '3', hi: '3', mid: '3', 'arr[mid]': '13' }, output: 'return 3', note: '命中目標，結束搜尋' },
+      ],
+    },
+  },
+};
+
+const PREVIEW_QUIZ: Lesson = {
+  title: '隨堂檢核：導數與斜率觀念',
+  subject: 'math',
+  crumbs: ['數學', '微積分'],
+  task: '直接點選選項作答並送出，確認自己真的抓到核心觀念。',
+  suggestions: ['幫我用圖形再看一次切線斜率', '導數為零一定是極值嗎？'],
+  steps: [
+    { text: '先試第一題：確認你分得清楚**平均變化率**與**瞬時變化率**的差別。', focus: ['q1'] },
+    { text: '第二題換個角度：當某一點的導數等於 `0` 時，幾何上代表什麼？', focus: ['q2'] },
+  ],
+  widget: {
+    kind: 'quiz',
+    quiz: {
+      title: '導數核心觀念檢核',
+      questions: [
+        {
+          id: 'q1',
+          prompt: '當我們把割線兩點的水平間距 h 一步步縮小趨近 0，割線斜率逼近的是什麼？',
+          options: ['該點切線的斜率（瞬時變化率）', '函數在整個區間的平均值', '曲線下的面積大小', '函數在這一點的 y 座標'],
+          answer: [0],
+          hint: '回想割線從兩點慢慢收斂成只碰觸曲線一點的直線。',
+          explanation: '割線斜率是區間平均變化率；當 h → 0，割線收斂為切線，其斜率即為該點的導數（瞬時變化率）。',
+        },
+        {
+          id: 'q2',
+          prompt: '若可微函數在 x = a 處滿足 f′(a) = 0，下列哪些敘述一定正確？（複選）',
+          options: ['曲線在 x = a 處的切線是水平的', '函數在 x = a 處的瞬時變化率為 0', 'x = a 一定是最大值或最小值', 'f(a) 的數值一定等於 0'],
+          answer: [0, 1],
+          hint: '想想 y = x³ 在 x = 0 的切線，它是平的，但沒有折返。',
+          explanation: 'f′(a) = 0 代表水平切線與零瞬時變化率，但不保證是極值（例如 x³ 在 0 點是反曲點），也不代表函數值 f(a) 為 0。',
+        },
+      ],
+    },
+  },
+};
+
 function mockApi(): Api {
   const fixtures = [bubble, pyth, deriv] as { lesson: NonNullable<LessonRecord['lesson']>; model: string }[];
   const questions = ['泡泡排序是怎麼運作的？', '畢氏定理為什麼成立？', '導數到底在算什麼？'];
@@ -83,12 +164,18 @@ function mockApi(): Api {
     title: r.course?.title ?? r.lesson?.title, subject: r.lesson?.subject,
     total: r.lesson && itemsOf(chaptersOf(r)).length,
   });
-  const pickFixture = (q: string) => /畢氏|三角|幾何|證明/i.test(q) ? fixtures[1] : /導數|斜率|微積分|函數/.test(q) ? fixtures[2] : fixtures[0];
+  const pickFixture = (q: string): { lesson: Lesson; model: string } => {
+    if (/測驗|考考|練習|題目|檢核/i.test(q)) return { lesson: PREVIEW_QUIZ, model: 'preview' };
+    if (/二分|程式碼|追蹤|code|python/i.test(q)) return { lesson: PREVIEW_CODE, model: 'preview' };
+    if (/畢氏|三角|幾何|證明/i.test(q)) return fixtures[1];
+    if (/導數|斜率|微積分|函數/.test(q)) return fixtures[2];
+    return fixtures[0];
+  };
   /**
    * Streams a fixture's steps from `at` ms on, as the lesson's first chapter or (with `part`) as a
    * chapter in the lesson's pending slot; returns when it lands.
    */
-  const playChapter = (id: string, f: typeof fixtures[number], t: number[], at: number, part?: Omit<Part, 'lesson'>, next?: string) => {
+  const playChapter = (id: string, f: { lesson: Lesson; model: string }, t: number[], at: number, part?: Omit<Part, 'lesson'>, next?: string) => {
     const r = store.get(id)!;
     const { widget: _w, ...draft } = f.lesson;
     t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在寫步驟…' }), at + 400));
@@ -99,6 +186,7 @@ function mockApi(): Api {
     }, at + 700 + i * 300)));
     const end = at + 2400 + draft.steps.length * 300;
     t.push(window.setTimeout(() => {
+      if (!store.has(id)) return;
       if (part) { r.more = [...(r.more ?? []), { ...part, lesson: f.lesson, model: f.model, cost: PREVIEW_COST }]; r.pending = undefined; }
       else Object.assign(r, { status: 'ready', lesson: f.lesson, model: f.model, draft: undefined, cost: PREVIEW_COST });
       if (next) r.pending = { question: next, status: 'generating', course: true };
@@ -129,11 +217,12 @@ function mockApi(): Api {
       store.set(id, { id, question, status: 'generating', createdAt: Date.now(), step: 0 });
       const t: number[] = [];
       timers.set(id, t);
-      // Preview only: broad questions (or 先問我) get questions first, like Claude would ask.
       if (askFirst || question.length <= 6 || /整課|一整|全部|單元/.test(question)) {
         t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在想要先問你什麼…' }), 300));
         t.push(window.setTimeout(() => {
-          Object.assign(store.get(id)!, { status: 'asking', ask: PREVIEW_ASK, model: 'preview', cost: PREVIEW_COST });
+          const cur = store.get(id);
+          if (!cur) return;
+          Object.assign(cur, { status: 'asking', ask: PREVIEW_ASK, model: 'preview', cost: PREVIEW_COST });
           timers.delete(id);
           emit({ id, type: 'ready' });
         }, 1400));
@@ -151,7 +240,7 @@ function mockApi(): Api {
       if (!answers.some((a) => a.answer.includes('一整課'))) { playChapter(id, pickFixture(r.question), t, 0); return; }
       const course = { title: `${r.question}：整課`, outline: fixtures.map((f) => ({ title: f.lesson.title.split('：')[0], goal: `弄懂${f.lesson.title.split('：')[0]}在做什麼` })) };
       t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在規劃整課…' }), 200));
-      t.push(window.setTimeout(() => { r.course = course; emit({ id, type: 'ready' }); }, 900));
+      t.push(window.setTimeout(() => { if (!store.has(id)) return; r.course = course; emit({ id, type: 'ready' }); }, 900));
       writeCourse(id, 0, t, 1000);
     },
     async continueCourse(id) {
@@ -163,7 +252,6 @@ function mockApi(): Api {
       timers.set(id, t);
       writeCourse(id, k, t, 100);
     },
-    // Preview only: follow-ups take turns between a text reply and a new chapter from the fixtures.
     async continueLesson(id, question, _gen, chapter) {
       const r = store.get(id);
       if (!r || r.status !== 'ready') throw new Error('這一課還沒準備好');
@@ -172,25 +260,37 @@ function mockApi(): Api {
       const n = r.more?.length ?? 0;
       const t: number[] = [];
       const done = (part: Part) => t.push(window.setTimeout(() => {
+        if (!store.has(id)) return;
         r.more = [...(r.more ?? []), part];
         r.pending = undefined;
         timers.delete(id);
         emit({ id, type: 'ready' });
       }, 2400));
       t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在想怎麼教…' }), 300));
-      if (n % 2 === 0) {
-        const text = '好問題背後通常是同一件事：**每一步只看眼前兩個數字**。所以不用記整個排序過程，只要跟著那一對往右移就好。';
+      if (/測驗|考考|練習|題目|檢核|二分|程式碼/i.test(question)) {
+        const f = pickFixture(question);
+        const { widget: _w, ...draft } = f.lesson;
+        draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
+          if (!r.pending) return;
+          r.pending.draft = { mode: 'chapter', ...draft, steps: draft.steps.slice(0, i + 1) };
+          emit({ id, type: 'partial', lesson: r.pending.draft, more: true });
+        }, 450 + i * 260)));
+        done({ question, mode: 'chapter', lesson: f.lesson, model: f.model, cost: PREVIEW_COST });
+      } else if (n % 2 === 0) {
+        const text = '好問題背後通常是同一件事：**每一步只看眼前兩個數字**。所以不用記整個過程，只要跟著當下的核心條件走就好。';
         for (let k = 1; k <= 4; k++) t.push(window.setTimeout(() => {
-          r.pending!.draft = { mode: 'text', text: text.slice(0, Math.ceil((text.length * k) / 4)) };
-          emit({ id, type: 'partial', lesson: r.pending!.draft, more: true });
+          if (!r.pending) return;
+          r.pending.draft = { mode: 'text', text: text.slice(0, Math.ceil((text.length * k) / 4)) };
+          emit({ id, type: 'partial', lesson: r.pending.draft, more: true });
         }, 400 + k * 350));
         done({ question, mode: 'text', at: chapter, text, suggestions: r.lesson!.suggestions, model: 'preview', cost: PREVIEW_COST });
       } else {
         const f = fixtures[(fixtures.findIndex((x) => x.lesson.title === r.lesson!.title) + 1 + n) % fixtures.length];
         const { widget: _w, ...draft } = f.lesson;
         draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
-          r.pending!.draft = { mode: 'chapter', ...draft, steps: draft.steps.slice(0, i + 1) };
-          emit({ id, type: 'partial', lesson: r.pending!.draft, more: true });
+          if (!r.pending) return;
+          r.pending.draft = { mode: 'chapter', ...draft, steps: draft.steps.slice(0, i + 1) };
+          emit({ id, type: 'partial', lesson: r.pending.draft, more: true });
         }, 500 + i * 250)));
         done({ question, mode: 'chapter', lesson: f.lesson, model: f.model, cost: PREVIEW_COST });
       }
@@ -202,10 +302,16 @@ function mockApi(): Api {
       r.names = { ...r.names };
       if (name.trim()) r.names[chapter] = name.trim(); else delete r.names[chapter];
     },
+    async deleteLesson(id) {
+      timers.get(id)?.forEach(clearTimeout);
+      timers.delete(id);
+      store.delete(id);
+    },
     async cancelLesson(id) {
       timers.get(id)?.forEach(clearTimeout);
       timers.delete(id);
-      const r = store.get(id)!;
+      const r = store.get(id);
+      if (!r) return;
       if (r.pending) Object.assign(r.pending, { status: 'error', error: '你停止了這次生成' });
       else Object.assign(r, { status: 'error', error: '你停止了這次生成' });
       emit({ id, type: 'error', message: '你停止了這次生成' });

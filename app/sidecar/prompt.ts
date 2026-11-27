@@ -126,17 +126,46 @@ const PASSAGE = obj(['text'], {
   source: { type: 'string' },
   notes: { type: 'array', items: obj(['id', 'text'], { id: { type: 'string', description: 'the [[id|...]] it explains' }, text: { type: 'string' } }) },
 }, 'passage only');
+const CODE = obj(['lines', 'states'], {
+  title: { type: 'string', description: 'filename or label, e.g. "binary_search.py"' },
+  language: { type: 'string', description: 'e.g. "python", "javascript", "cpp"' },
+  lines: { ...strs, minItems: 1, description: 'source code lines (1-based indexing in states)' },
+  states: {
+    type: 'array', minItems: 1,
+    items: obj(['id', 'lines'], {
+      id,
+      lines: { type: 'array', items: { type: 'integer', minimum: 1 }, description: '1-based line numbers highlighted at this step' },
+      vars: { type: 'object', additionalProperties: { type: 'string' }, description: 'variable name -> current value as string' },
+      output: { type: 'string', description: 'return value or printed output at this state' },
+      note: { type: 'string', description: 'one short line summarizing this state' },
+    }),
+  },
+}, 'code only: step-by-step code execution trace with highlighted lines and live variables');
+const QUIZ = obj(['questions'], {
+  title: { type: 'string' },
+  questions: {
+    type: 'array', minItems: 1, maxItems: 5,
+    items: obj(['id', 'prompt', 'options', 'answer', 'explanation'], {
+      id,
+      prompt: { type: 'string', description: 'clear question stem' },
+      options: { ...strs, minItems: 2, maxItems: 5 },
+      answer: { type: 'array', items: { type: 'integer', minimum: 0 }, minItems: 1, description: '0-based correct option index(es); >1 for multi-select' },
+      explanation: { type: 'string', description: 'concise explanation shown after checking' },
+      hint: { type: 'string', description: 'optional hint before answering' },
+    }),
+  },
+}, 'quiz only: interactive single/multi-choice formative check');
 
 const WIDGET = {
   type: 'object',
   additionalProperties: false,
   required: ['kind'],
   properties: {
-    kind: { type: 'string', enum: ['plot', 'chart', 'diagram', 'timeline', 'compare', 'points', 'passage', 'html', 'bubble-sort'] },
+    kind: { type: 'string', enum: ['plot', 'chart', 'diagram', 'timeline', 'compare', 'points', 'passage', 'code', 'quiz', 'html', 'bubble-sort'] },
     values: { type: 'array', items: { type: 'integer', minimum: 1, maximum: 99 }, minItems: 3, maxItems: 8, description: 'bubble-sort only: the list to sort' },
     plot: PLOT,
     html: { type: 'string', description: 'html only: the self-contained widget, see the system prompt' },
-    chart: CHART, diagram: DIAGRAM, timeline: TIMELINE, compare: COMPARE, points: POINTS, passage: PASSAGE,
+    chart: CHART, diagram: DIAGRAM, timeline: TIMELINE, compare: COMPARE, points: POINTS, passage: PASSAGE, code: CODE, quiz: QUIZ,
   },
 } as const;
 
@@ -234,7 +263,9 @@ Kit visuals share one step mechanism: every element has an id; a step's "reveal"
 4. "compare": two to four things side by side over a few rows (systems, theories, organelles, writing styles). Ids: column ids, row ids, and "rowId.columnId" for one cell.
 5. "points": two to six key points, each a short title with one line and an icon, optionally around a "center" question: reasons, conditions, features, takeaways.
 6. "passage": a text to read closely: classical Chinese, a poem, an English sentence or paragraph, a document excerpt. Wrap each part a step points at as [[id|words]]; a "note" with the same id is shown while that part is in focus (a gloss, a grammar point, a rhetorical device). Keep the original wording exactly.
-7. "plot": anything on a coordinate plane: functions and their parameters, slopes and derivatives, tangents, areas and integrals, Riemann sums, limits, sequences of points, vectors, linear transformations of a few vectors, trigonometry on the unit circle, projectile paths, coordinate geometry. Describe a scene:
+7. "code": step-by-step code walkthrough for any algorithm, recursion, data structure or programming concept. Provide "lines" (array of source lines) and "states" (each with an "id", 1-based highlighted "lines", live "vars" map of string values, optional "output" and short "note"). Steps focus each state id in order so the learner watches execution and changing variables line by line.
+8. "quiz": interactive formative check when the learner asks to be quizzed, practices after a concept, or finishes a review chapter of a course. Provide 1-5 "questions" (each with "id", "prompt", 2-5 "options", 0-based "answer" indices, "explanation", and optional "hint"). Each step focuses one question id (or introduces a group) while the learner actually picks answers and checks them live.
+9. "plot": anything on a coordinate plane: functions and their parameters, slopes and derivatives, tangents, areas and integrals, Riemann sums, limits, sequences of points, vectors, linear transformations of a few vectors, trigonometry on the unit circle, projectile paths, coordinate geometry. Describe a scene:
    - "x" and "y": the visible ranges. Pick them so everything important is inside with some margin.
    - "params": the numbers that change. Each step animates params with "set" (values tween smoothly), so motion comes from params: grow b to trace a curve or sweep an area, move "at" to slide a tangent, raise n to refine a Riemann sum, change a to reshape a parabola. Mark at most two params "slider": true for the learner to play with.
    - "items": function (expr in x, optional domain a..b, label), area (under expr from a to b), riemann (left rectangles of expr on a..b with n), tangent (to expr at "at"), point (x, y, optional "drag": a param name; then x must be that param and y usually the curve, e.g. x "p", y "p^2"), vector and segment (from, to), polygon (points), text (x, y, text).
@@ -242,8 +273,8 @@ Kit visuals share one step mechanism: every element has an id; a step's "reveal"
    - "color": "accent" for the one thing that matters now, "ink" for supporting objects, "muted" for references and ghosts. Use "dashed" for guides. Use "show" to reveal items at the step that introduces them.
    - "readouts": up to 4 live numbers under the plot (expressions in params), e.g. slope, area, the current x. They make the maths visible.
    - Never put "x" inside a readout or a point coordinate; only params.
-8. "bubble-sort": only for bubble sort or simple comparison sorting. Give "values" (3 to 8 small integers, usually reverse-ordered so every pass matters, e.g. [4, 3, 2, 1]). Every step gives "pass": how many full passes have been completed when that step is shown, from 0 to values.length - 1, never decreasing.
-9. "html": your own drawing, for anything the others cannot show: a physical setup that moves, a molecule or a reaction, a cell, a geometric proof by rearrangement, a circuit, a map sketch, an illustrated scene, or a kit visual combined with something custom. Write one self-contained HTML fragment in "html":
+10. "bubble-sort": only for bubble sort or simple comparison sorting. Give "values" (3 to 8 small integers, usually reverse-ordered so every pass matters, e.g. [4, 3, 2, 1]). Every step gives "pass": how many full passes have been completed when that step is shown, from 0 to values.length - 1, never decreasing.
+11. "html": your own drawing, for anything the others cannot show: a physical setup that moves, a molecule or a reaction, a cell, a geometric proof by rearrangement, a circuit, a map sketch, an illustrated scene, or a kit visual combined with something custom. Write one self-contained HTML fragment in "html":
    - A fragment, not a full document: <style>, markup and <script> only. No external URLs, fonts, images or libraries. No alert, prompt, localStorage, fetch or forms.
    - It fills its container (100% width and height, transparent background). Prefer one responsive <svg> with a viewBox of about 800 x 500, the stage's own shape; keep every element and label inside it with a 24-unit margin, so nothing is clipped. Labels at 14-18 units.
    - Colours only from the host's CSS variables: --fg (ink), --fg-2 (secondary text), --fg-3 (muted lines), --line (hairlines and grids), --sub (subtle fills), --raise (card fill), --bg (background), --acc (the one accent, for the thing that matters now), --acc-soft (accent tint fill), --done (finished/settled items). Font: inherit. Minimal and calm: thin strokes, one accent.

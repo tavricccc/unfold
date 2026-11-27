@@ -97,7 +97,10 @@ function makeApi(): Api {
         emit({ id, type: 'ready' });
       });
     },
+    async answerLesson() {},
+    async continueCourse() {},
     async renameChapter() {},
+    async deleteLesson(id) { store.delete(id); },
     async cancelLesson() {},
     async claudeStatus() { return 'ok'; },
     async openLink() {},

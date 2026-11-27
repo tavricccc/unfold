@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
-    "check": "bun tests/expr.check.ts && bun tests/partial.check.ts",
+    "check": "bun tests/expr.check.ts && bun tests/partial.check.ts && bun tests/kit.check.ts",
     "build:agent": "bun build --compile --minify --target=bun-windows-x64 sidecar/agent.ts --outfile src-tauri/binaries/unfold-agent-x86_64-pc-windows-msvc.exe"
   },
   "dependencies": {

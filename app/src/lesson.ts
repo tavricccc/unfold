@@ -3,6 +3,21 @@
 export const SUBJECTS = ['math', 'physics', 'chemistry', 'biology', 'earth', 'history', 'geography', 'civics', 'language', 'algorithm', 'art', 'other'] as const;
 export type Subject = typeof SUBJECTS[number];
 
+export const SUBJECT_LABEL: Record<Subject, string> = {
+  math: '數學',
+  physics: '物理',
+  chemistry: '化學',
+  biology: '生物',
+  earth: '地科',
+  history: '歷史',
+  geography: '地理',
+  civics: '公民',
+  language: '語文',
+  algorithm: '演算法',
+  art: '藝術',
+  other: '其他',
+};
+
 export interface Step {
   text: string;
   /** bubble-sort: full passes completed when this step is shown */
@@ -49,7 +64,35 @@ export interface PassageSpec {
   source?: string;
   notes?: { id: string; text: string }[];
 }
-export const KIT_KINDS = ['chart', 'diagram', 'timeline', 'compare', 'points', 'passage'] as const;
+/** Step-by-step code execution trace with highlighted lines, live variables and optional output. */
+export interface CodeSpec {
+  title?: string;
+  language?: string;
+  lines: string[];
+  states: {
+    id: string;
+    /** 1-based line numbers highlighted at this state */
+    lines: number[];
+    /** variable name -> display value */
+    vars?: Record<string, string>;
+    output?: string;
+    note?: string;
+  }[];
+}
+/** Interactive formative check: single or multiple-choice questions with instant feedback and explanations. */
+export interface QuizSpec {
+  title?: string;
+  questions: {
+    id: string;
+    prompt: string;
+    options: string[];
+    /** 0-based indices of correct option(s) */
+    answer: number[];
+    explanation: string;
+    hint?: string;
+  }[];
+}
+export const KIT_KINDS = ['chart', 'diagram', 'timeline', 'compare', 'points', 'passage', 'code', 'quiz'] as const;
 export type KitKind = typeof KIT_KINDS[number];
 
 export type Expr = string | number;
@@ -95,6 +138,8 @@ export interface Widget {
   compare?: CompareSpec;
   points?: PointsSpec;
   passage?: PassageSpec;
+  code?: CodeSpec;
+  quiz?: QuizSpec;
 }
 
 export interface Lesson {

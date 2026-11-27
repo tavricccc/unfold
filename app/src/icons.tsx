@@ -37,6 +37,20 @@ export const Icon = {
   out: () => <S w={2} size={13}><path d="M7 17 17 7M8 7h9v9" /></S>,
   right: () => <S w={2} size={13}><path d="M5 12h14M13 6l6 6-6 6" /></S>,
   check: () => <S w={2.6} size={14}><path d="m5 12 5 5 9-10" /></S>,
+  search: () => <S w={1.8} size={14}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></S>,
+  trash: () => <S w={1.7} size={14}><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></S>,
+  sidebar: () => <S w={1.7} size={15}><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></S>,
+  expand: () => <S w={1.8} size={14}><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></S>,
+  shrink: () => <S w={1.8} size={14}><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" /></S>,
+  play: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5.2v13.6a1 1 0 0 0 1.5.85l11-6.8a1 1 0 0 0 0-1.7l-11-6.8A1 1 0 0 0 7 5.2z" /></svg>,
+  pause: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4.5" height="14" rx="1.2" /><rect x="13.5" y="5" width="4.5" height="14" rx="1.2" /></svg>,
+  shuffle: () => <S w={1.8} size={14}><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></S>,
+  keyboard: () => <S w={1.7} size={15}><rect x="2" y="5" width="20" height="14" rx="2.5" /><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M7 13h.01M11 13h.01M15 13h.01M8 16h8" /></S>,
+  move: () => <S w={1.8} size={14}><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3" /></S>,
+  restart: () => <S w={1.8} size={14}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></S>,
+  sun: () => <S w={1.7} size={14}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></S>,
+  moon: () => <S w={1.7} size={14}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></S>,
+  ask: () => <S w={1.8} size={14}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></S>,
 };
 
 export const subjectIcon = (s?: Subject) => ((Icon as Record<string, () => ReactNode>)[s ?? 'other'] ?? Icon.other)();
@@ -52,9 +66,11 @@ export const Mark = () => (
   </span>
 );
 
-/** Renders **bold** markers from lesson text. */
+/** Renders **bold** and `inline code` markers from lesson text. */
 export function rich(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') ? <b key={i}>{part.slice(2, -2)}</b> : part,
-  );
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) return <b key={i}>{part.slice(2, -2)}</b>;
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <code key={i} className="ic">{part.slice(1, -1)}</code>;
+    return part;
+  });
 }

@@ -32,6 +32,8 @@ function kitIds(w: Widget): Set<string> | undefined {
     }
     case 'points': w.points!.items.forEach((it) => add(it.id)); return ids;
     case 'passage': for (const m of w.passage!.text.matchAll(/\[\[([^|\]]+)\|[^\]]+\]\]/g)) add(m[1].trim()); return ids;
+    case 'code': w.code!.states.forEach((st) => add(st.id)); return ids;
+    case 'quiz': w.quiz!.questions.forEach((q) => add(q.id)); return ids;
     default: return undefined;
   }
 }
@@ -92,6 +94,24 @@ export function problems(w: Widget, steps: Step[]): string[] {
   if (w.kind === 'passage') {
     const spans = ids;
     w.passage!.notes?.forEach((n) => { if (!spans.has(n.id)) out.push(`note "${n.id}" has no [[${n.id}|...]] in the text`); });
+  }
+  if (w.kind === 'code') {
+    const c = w.code!;
+    if (!c.lines?.length) out.push('code widget has no lines');
+    if (!c.states?.length) out.push('code widget has no states');
+    const maxLine = c.lines?.length ?? 0;
+    c.states?.forEach((st) => {
+      st.lines.forEach((ln) => { if (ln < 1 || ln > maxLine) out.push(`code state "${st.id}" highlights line ${ln}, outside 1..${maxLine}`); });
+    });
+  }
+  if (w.kind === 'quiz') {
+    const qz = w.quiz!;
+    if (!qz.questions?.length) out.push('quiz widget has no questions');
+    qz.questions?.forEach((q) => {
+      if ((q.options?.length ?? 0) < 2) out.push(`quiz question "${q.id}" needs at least 2 options`);
+      if (!q.answer?.length) out.push(`quiz question "${q.id}" has no answer indices`);
+      q.answer?.forEach((idx) => { if (idx < 0 || idx >= (q.options?.length ?? 0)) out.push(`quiz question "${q.id}" answer index ${idx} is out of range`); });
+    });
   }
   return out;
 }
