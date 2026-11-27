@@ -221,8 +221,21 @@ fn more_steps(rec: &Value) -> usize {
   }).sum())
 }
 
+/// Adds one run's cost to the lesson's own (the first chapter, and the questions or plan before it).
+fn add_cost(total: &Value, c: &Value) -> Value {
+  if !total.is_object() {
+    return c.clone();
+  }
+  let mut out = total.clone();
+  for k in ["usd", "input", "output", "cacheRead", "cacheWrite"] {
+    let v = total[k].as_f64().unwrap_or(0.0) + c[k].as_f64().unwrap_or(0.0);
+    out[k] = if k == "usd" { json!(v) } else { json!(v as u64) };
+  }
+  out
+}
+
 #[tauri::command]
-fn start_lesson(app: AppHandle, question: String, model: Option<String>, effort: Option<String>) -> Result<String, String> {
+fn start_lesson(app: AppHandle, question: String, model: Option<String>, effort: Option<String>, ask_first: Option<bool>) -> Result<String, String> {
   let question = question.trim().to_string();
   if question.is_empty() {
     return Err("問題是空的".into());
@@ -230,8 +243,45 @@ fn start_lesson(app: AppHandle, question: String, model: Option<String>, effort:
   let id = format!("{:x}", now_ms());
   let rec = json!({ "id": id, "question": question, "status": "generating", "createdAt": now_ms() as u64, "step": 0 });
   write_record(&app, &id, &rec)?;
-  spawn_job(app.clone(), id.clone(), json!({ "question": question, "model": model, "effort": effort }), false);
+  spawn_job(app.clone(), id.clone(), json!({ "question": question, "model": model, "effort": effort, "askFirst": ask_first.unwrap_or(false) }));
   Ok(id)
+}
+
+/// Sends the learner's answers to the questions Claude asked (none: they skipped), and starts teaching.
+#[tauri::command]
+fn answer_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, answers: Value, model: Option<String>, effort: Option<String>) -> Result<(), String> {
+  if jobs.running.lock().map_err(|e| e.to_string())?.contains_key(&id) {
+    return Err("這一課還在生成".into());
+  }
+  let mut rec = read_record(&app, &id)?;
+  if rec["status"] != "asking" {
+    return Err("這一課沒有在等你回答".into());
+  }
+  let req = json!({ "question": rec["question"], "model": model, "effort": effort, "record": rec.clone(), "answers": answers });
+  rec["answers"] = answers;
+  rec["status"] = json!("generating");
+  write_record(&app, &id, &rec)?;
+  spawn_job(app.clone(), id, req);
+  Ok(())
+}
+
+/// Writes the rest of a course whose next chapter failed.
+#[tauri::command]
+fn continue_course(app: AppHandle, jobs: tauri::State<Jobs>, id: String, model: Option<String>, effort: Option<String>) -> Result<(), String> {
+  if jobs.running.lock().map_err(|e| e.to_string())?.contains_key(&id) {
+    return Err("這一課還在生成".into());
+  }
+  let mut rec = read_record(&app, &id)?;
+  let outline = rec["course"]["outline"].as_array().cloned().unwrap_or_default();
+  let written = 1 + rec["more"].as_array().map_or(0, |m| m.iter().filter(|p| p["course"] == true).count());
+  if rec["status"] != "ready" || written >= outline.len() || rec["pending"]["status"] == "generating" {
+    return Err("這一課沒有要接著寫的章節".into());
+  }
+  let req = json!({ "question": rec["question"], "model": model, "effort": effort, "record": rec.clone(), "course": true });
+  rec["pending"] = json!({ "question": outline[written]["goal"], "status": "generating", "course": true });
+  write_record(&app, &id, &rec)?;
+  spawn_job(app.clone(), id, req);
+  Ok(())
 }
 
 /// Asks a follow-up inside an existing lesson, while the learner reads `chapter`. Claude answers with
@@ -256,18 +306,18 @@ fn continue_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String, questio
   let req = json!({ "question": question, "model": model, "effort": effort, "record": rec.clone(), "at": chapter });
   rec["pending"] = json!({ "question": question, "status": "generating", "at": chapter });
   write_record(&app, &id, &rec)?;
-  spawn_job(app.clone(), id, req, true);
+  spawn_job(app.clone(), id, req);
   Ok(())
 }
 
-/// Runs the sidecar for one lesson. `more` routes the result into the lesson's pending follow-up
-/// instead of the lesson itself.
-fn spawn_job(app2: AppHandle, id2: String, req: Value, more: bool) {
+/// Runs the sidecar for one lesson. While the lesson has a pending follow-up (or a course chapter
+/// being written), drafts and errors belong to it instead of the lesson itself.
+fn spawn_job(app2: AppHandle, id2: String, req: Value) {
   std::thread::spawn(move || {
     let fail = |msg: String| {
       log::error!("lesson {id2} failed: {msg}");
       if let Ok(mut r) = read_record(&app2, &id2) {
-        let t = if more { &mut r["pending"] } else { &mut r };
+        let t = if r["pending"].is_object() { &mut r["pending"] } else { &mut r };
         t["status"] = json!("error");
         t["error"] = json!(msg);
         if let Err(e) = write_record(&app2, &id2, &r) {
@@ -320,7 +370,9 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value, more: bool) {
       };
       match ev["type"].as_str() {
         Some("partial") => {
+          let mut more = false;
           if let Ok(mut r) = read_record(&app2, &id2) {
+            more = r["pending"].is_object();
             let t = if more { &mut r["pending"] } else { &mut r };
             t["draft"] = ev["lesson"].clone();
             if let Err(e) = write_record(&app2, &id2, &r) {
@@ -328,6 +380,34 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value, more: bool) {
             }
           }
           let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "partial", "lesson": ev["lesson"], "more": more }));
+        }
+        Some("ask") | Some("outline") | Some("next") => {
+          let kind = ev["type"].as_str().unwrap_or_default();
+          match read_record(&app2, &id2) {
+            Ok(mut r) => {
+              match kind {
+                "ask" => {
+                  got_result = true;
+                  r["status"] = json!("asking");
+                  r["ask"] = ev["ask"].clone();
+                }
+                "outline" => r["course"] = ev["course"].clone(),
+                _ => r["pending"] = json!({ "question": ev["question"], "status": "generating", "at": ev["at"], "course": true }),
+              }
+              if kind != "next" {
+                if let Some(o) = r.as_object_mut() {
+                  o.remove("draft");
+                }
+                r["model"] = ev["model"].clone();
+                r["cost"] = add_cost(&r["cost"], &ev["cost"]);
+              }
+              if let Err(e) = write_record(&app2, &id2, &r) {
+                return fail(format!("無法儲存課程：{e}"));
+              }
+              let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "ready" }));
+            }
+            Err(e) => return fail(format!("課程紀錄不見了：{e}")),
+          }
         }
         Some("session") => {
           if let Ok(mut r) = read_record(&app2, &id2) {
@@ -341,7 +421,7 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value, more: bool) {
           got_result = true;
           match read_record(&app2, &id2) {
             Ok(mut r) => {
-              if more {
+              if ev["type"] == "part" {
                 let mut part = ev["part"].clone();
                 part["model"] = ev["model"].clone();
                 part["cost"] = ev["cost"].clone();
@@ -359,7 +439,7 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value, more: bool) {
                   o.remove("draft");
                 }
                 r["model"] = ev["model"].clone();
-                r["cost"] = ev["cost"].clone();
+                r["cost"] = add_cost(&r["cost"], &ev["cost"]);
               }
               if let Err(e) = write_record(&app2, &id2, &r) {
                 return fail(format!("無法儲存課程：{e}"));
@@ -424,7 +504,7 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![open_link, list_lessons, get_lesson, set_progress, rename_chapter, delete_lesson, claude_status, start_lesson, continue_lesson, cancel_lesson])
+    .invoke_handler(tauri::generate_handler![open_link, list_lessons, get_lesson, set_progress, rename_chapter, delete_lesson, claude_status, start_lesson, answer_lesson, continue_lesson, continue_course, cancel_lesson])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
 }
