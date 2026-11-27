@@ -28,6 +28,27 @@ fn open_link(url: String) -> Result<(), String> {
   r.map(|_| ()).map_err(|e| format!("could not open the browser: {e}"))
 }
 
+/// A reference folder as the sidecar will see it: absolute, without Windows' verbatim prefix.
+fn ref_dir(p: &str) -> Result<PathBuf, String> {
+  let path = fs::canonicalize(p.trim()).map_err(|e| format!("找不到資料夾 {p}：{e}"))?;
+  if !path.is_dir() {
+    return Err(format!("{p} 不是資料夾"));
+  }
+  let s = path.to_string_lossy();
+  Ok(PathBuf::from(match s.strip_prefix(r"\\?\UNC\") {
+    Some(rest) => format!(r"\\{rest}"),
+    None => s.strip_prefix(r"\\?\").unwrap_or(&s).to_string(),
+  }))
+}
+
+/// Checks a folder the learner wants Claude to read from, and names it for the UI.
+#[tauri::command]
+fn inspect_ref(path: String) -> Result<Value, String> {
+  let dir = ref_dir(&path)?;
+  let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| dir.to_string_lossy().to_string());
+  Ok(json!({ "path": dir.to_string_lossy(), "name": name }))
+}
+
 fn now_ms() -> u128 {
   SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
@@ -143,6 +164,7 @@ fn list_lessons(app: AppHandle) -> Result<Vec<Value>, String> {
       "createdAt": rec["createdAt"], "step": rec["step"],
       "title": if rec["course"]["title"].is_string() { &rec["course"]["title"] } else { &l["title"] }, "subject": l["subject"],
       "total": l["steps"].as_array().map(|a| a.len() + more_steps(&rec)),
+      "refs": rec["refs"].as_array().map(|a| a.len()),
     }));
   }
   out.sort_by_key(|v| std::cmp::Reverse(v["createdAt"].as_u64().unwrap_or(0)));
@@ -235,15 +257,29 @@ fn add_cost(total: &Value, c: &Value) -> Value {
 }
 
 #[tauri::command]
-fn start_lesson(app: AppHandle, question: String, model: Option<String>, effort: Option<String>, ask_first: Option<bool>) -> Result<String, String> {
+fn start_lesson(app: AppHandle, question: String, model: Option<String>, effort: Option<String>, ask_first: Option<bool>, refs: Option<Vec<String>>) -> Result<String, String> {
   let question = question.trim().to_string();
   if question.is_empty() {
     return Err("問題是空的".into());
   }
+  // Folders Claude may read for this lesson; fixed for its whole life, like its tools.
+  let mut dirs: Vec<String> = vec![];
+  for p in refs.unwrap_or_default() {
+    let d = ref_dir(&p)?.to_string_lossy().to_string();
+    if !dirs.iter().any(|x| x.eq_ignore_ascii_case(&d)) {
+      dirs.push(d);
+    }
+  }
+  if dirs.len() > 8 {
+    return Err("最多附 8 個資料夾".into());
+  }
   let id = format!("{:x}", now_ms());
-  let rec = json!({ "id": id, "question": question, "status": "generating", "createdAt": now_ms() as u64, "step": 0 });
+  let mut rec = json!({ "id": id, "question": question, "status": "generating", "createdAt": now_ms() as u64, "step": 0 });
+  if !dirs.is_empty() {
+    rec["refs"] = json!(dirs);
+  }
   write_record(&app, &id, &rec)?;
-  spawn_job(app.clone(), id.clone(), json!({ "question": question, "model": model, "effort": effort, "askFirst": ask_first.unwrap_or(false) }));
+  spawn_job(app.clone(), id.clone(), json!({ "question": question, "model": model, "effort": effort, "askFirst": ask_first.unwrap_or(false), "refs": dirs }));
   Ok(id)
 }
 
@@ -482,6 +518,7 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
 pub fn run() {
   tauri::Builder::default()
     .manage(Jobs::default())
+    .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())
     .setup(|app| {
       // A lesson left "generating" by a previous run can never finish; mark it so the UI can offer a retry.
@@ -505,7 +542,7 @@ pub fn run() {
       }
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![open_link, list_lessons, get_lesson, set_progress, rename_chapter, delete_lesson, claude_status, start_lesson, answer_lesson, continue_lesson, continue_course, cancel_lesson])
+    .invoke_handler(tauri::generate_handler![open_link, inspect_ref, list_lessons, get_lesson, set_progress, rename_chapter, delete_lesson, claude_status, start_lesson, answer_lesson, continue_lesson, continue_course, cancel_lesson])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
 }

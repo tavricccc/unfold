@@ -310,3 +310,16 @@ Kit visuals share one step mechanism: every element has an id; a step's "reveal"
 Icons (for nodes, points, events, columns and U.icon) are small line illustrations; use them to make a visual friendlier and easier to scan, one per element at most, only where they mean something. Available names: ${ICON_NAMES.join(', ')}.
 
 "task" is one sentence telling the learner what to look at or try. "suggestions" are 2-3 short follow-up questions in the learner's voice, for every mode.`;
+
+/**
+ * Added to the system prompt of a lesson with reference folders. The folders never change during a
+ * lesson, so neither does its system prompt.
+ */
+export const refsPrompt = (refs: string[]) => `# Reference folders
+The learner attached ${refs.length === 1 ? 'a folder' : 'folders'} to this lesson:
+${refs.map((r) => `- ${r}`).join('\n')}
+${refs.length === 1 ? 'It is' : 'They are'} the source of truth for this lesson: a project to explain (its structure, how it works, the ideas behind it) or documents to teach from. You can read ${refs.length === 1 ? 'it' : 'them'} with Read, Glob and Grep. They are read-only, and nothing outside ${refs.length === 1 ? 'it' : 'them'} can be read. Always pass absolute paths inside these folders; Glob and Grep need "path".
+- Look before you teach. For a project, get the lay of the land first: the top-level layout (Glob "*" and "*/*"), the README, manifests (package.json, Cargo.toml, pyproject.toml, go.mod…), the entry points; then read the files that answer the question. For documents, list them and read the ones that matter (Read also reads PDFs and images). Read selectively, not everything; send several calls in one turn when you can.
+- Teach from what the files say. Name where a fact comes from in the step text, as the file path relative to the folder in \`backticks\`. When the files do not settle something, say so; when you add general knowledge, say that it is general. Never invent files, folders, functions, settings or numbers.
+- Visuals: "architecture" for how the project is built (folders or layers as groups; modules, processes, services, stores as components; the calls and data between them as edges), a "diagram" flowchart for a control flow or one request's path, "code" to walk through a real excerpt (copy its lines exactly), "compare" for alternatives in it. For documents, answer from them, quote with "passage" where the wording matters, and draw what they describe (a chart of their figures, a timeline, a diagram).
+- Each answer has only the files you read for it as its sources, so read again in follow-ups rather than answer from memory when the details matter.`;

@@ -16,6 +16,8 @@ export interface Item {
   part: number;
   /** set on the first item of a follow-up: the question it answers */
   asked?: string;
+  /** set on the last item of an answer: the reference files read to write it */
+  sources?: string[];
   /** index among all items */
   i: number;
 }
@@ -56,6 +58,7 @@ export function chaptersOf(r: LessonRecord): Chapter[] {
         items: p.lesson.steps.map((st, local) => ({ kind: 'step', text: st.text, chapter: c, local, version: 0, part, i: 0 })),
       });
       if (part > 0 && !p.course) out[c].items[0].asked = p.question;
+      if (p.lesson.sources?.length) out[c].items[out[c].items.length - 1].sources = p.lesson.sources;
       return;
     }
     const c = Math.min(p.at ?? out.length - 1, out.length - 1);
@@ -69,9 +72,10 @@ export function chaptersOf(r: LessonRecord): Chapter[] {
         ch.steps.push(st);
       }
       ch.items[first].asked = p.question;
+      if (p.sources?.length) ch.items[ch.items.length - 1].sources = p.sources;
     } else if (mode === 'text' && p.text) {
       const last = ch.items[ch.items.length - 1];
-      ch.items.push({ kind: 'text', text: p.text, chapter: c, local: last.local, version: last.version, part, asked: p.question, i: 0 });
+      ch.items.push({ kind: 'text', text: p.text, chapter: c, local: last.local, version: last.version, part, asked: p.question, i: 0, ...(p.sources?.length ? { sources: p.sources } : {}) });
     }
   });
   let i = 0;

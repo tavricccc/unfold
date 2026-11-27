@@ -1,6 +1,6 @@
 // Lesson script as written by the sidecar (see sidecar/prompt.ts for the schema Claude follows).
 
-export const SUBJECTS = ['math', 'physics', 'chemistry', 'biology', 'earth', 'history', 'geography', 'civics', 'language', 'algorithm', 'art', 'other'] as const;
+export const SUBJECTS = ['math', 'physics', 'chemistry', 'biology', 'earth', 'history', 'geography', 'civics', 'language', 'algorithm', 'software', 'art', 'other'] as const;
 export type Subject = typeof SUBJECTS[number];
 
 export const SUBJECT_LABEL: Record<Subject, string> = {
@@ -14,6 +14,7 @@ export const SUBJECT_LABEL: Record<Subject, string> = {
   civics: '公民',
   language: '語文',
   algorithm: '演算法',
+  software: '軟體',
   art: '藝術',
   other: '其他',
 };
@@ -166,6 +167,8 @@ export interface Lesson {
   steps: Step[];
   task: string;
   suggestions: string[];
+  /** files Claude read from the reference folders to write it, relative to their folder */
+  sources?: string[];
 }
 
 /** asking: Claude asked the learner questions and waits for their answers */
@@ -206,6 +209,8 @@ export interface Part {
   /** text: the reply */
   text?: string;
   suggestions?: string[];
+  /** extend and text: files read from the reference folders to write it (a chapter keeps its own) */
+  sources?: string[];
   /** chapter: one of the course's planned chapters (question holds its goal), not a follow-up */
   course?: boolean;
   model?: string;
@@ -270,6 +275,8 @@ export interface LessonRecord {
   answers?: Answer[];
   /** set when the lesson is a whole course */
   course?: Course;
+  /** folders Claude may read for this lesson (absolute paths), fixed when it starts */
+  refs?: string[];
 }
 
 /** The light summary used by the sidebar and home. */
@@ -282,6 +289,8 @@ export interface LessonMeta {
   title?: string;
   subject?: Subject;
   total?: number;
+  /** how many reference folders it reads from */
+  refs?: number;
 }
 
 export type LessonEvent =

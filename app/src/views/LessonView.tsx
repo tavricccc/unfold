@@ -213,6 +213,7 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
             {d?.crumbs?.map((c) => <Fragment key={c}>{c}<Icon.chevron /></Fragment>)}
             <b>{failed ? '沒有生成成功' : '正在準備這一課'}</b>
           </div>
+          <Refs refs={rec.refs} />
         </header>
         <div className="body">
           <div className="narr" ref={narr}><div className="narr-in">
@@ -262,6 +263,7 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
           {L.crumbs.filter((c) => c !== short).map((c) => <Fragment key={c}>{c}<Icon.chevron /></Fragment>)}
           <b>{short}</b>
         </div>
+        <Refs refs={rec.refs} />
         {showChapterMenu && (
           <ChapterMenu
             chs={chs} step={step} current={cur.chapter} onPick={toChapter}
@@ -292,6 +294,7 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
                     className={`para ${it.kind === 'text' ? 'reply ' : ''}${it.i < step ? 'past' : it.i === step ? 'now' : 'next'}`}
                     onClick={() => it.i !== step && go(it.i, it.i === step + 1)}
                   >{rich(it.text)}</p>
+                  {it.sources && it.i <= step && <Sources files={it.sources} />}
                 </Fragment>
               ))}
               {!after && !writing && !shownPend && (
@@ -390,6 +393,30 @@ export function LessonView({ id, gen, settings, update, onAsk, onProgress, onDel
         />
       )}
     </main>
+  );
+}
+
+const baseName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+
+/** The folders the lesson reads from, as one quiet badge in the top bar. */
+function Refs({ refs }: { refs?: string[] }) {
+  if (!refs?.length) return null;
+  return (
+    <span className="refs-badge" title={refs.join('\n')}>
+      <Icon.folder />{refs.map(baseName).join('、')}
+    </span>
+  );
+}
+
+/** The reference files an answer was written from. */
+function Sources({ files }: { files: string[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? files : files.slice(0, 4);
+  return (
+    <div className="srcs" aria-label="參考的檔案">
+      {shown.map((f) => <span key={f} className="src" title={f}><Icon.file />{baseName(f)}</span>)}
+      {files.length > shown.length && <button type="button" className="src more" onClick={() => setAll(true)}>+{files.length - shown.length}</button>}
+    </div>
   );
 }
 

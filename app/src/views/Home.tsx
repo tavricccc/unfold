@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api, type Ref } from '../api';
 import { Composer } from '../components/Composer';
 import { GenPicker } from '../components/GenPicker';
 import { Icon, subjectIcon } from '../icons';
@@ -10,11 +11,33 @@ const TRY_SETS = [
   ['二分搜尋的程式碼怎麼一步步跑？', '光合作用的光反應與碳反應', '工業革命為什麼從英國開始？', '通膨和升息之間是什麼關係？'],
   ['用隨堂測驗考考我導數觀念', '為什麼冰塊會浮在水上？', '《論語・學而》首章在講什麼？', '整課：從頭學懂二次函數'],
 ];
+/** With a folder attached: questions about a project or a pile of documents. */
+const REF_TRY = ['這個專案的架構長怎樣？', '從啟動到畫面出來，程式怎麼跑？', '核心的原理是什麼？', '整理這些文件的重點'];
 
-export function Home({ lessons, settings, update, onAsk, open }: {
-  lessons: LessonMeta[]; settings: Settings; update: (p: Partial<Settings>) => void; onAsk: (q: string) => void; open: (id: string) => void;
+export function Home({ lessons, settings, update, onAsk, open, onError }: {
+  lessons: LessonMeta[]; settings: Settings; update: (p: Partial<Settings>) => void;
+  /** refs: the folders attached to the new lesson */
+  onAsk: (q: string, refs?: string[]) => void; open: (id: string) => void; onError: (msg: string) => void;
 }) {
   const [setIdx, setSetIdx] = useState(0);
+  const [refs, setRefs] = useState<Ref[]>([]);
+  const [dragging, setDragging] = useState(false);
+
+  const attach = async (paths: string[]) => {
+    const got: Ref[] = [];
+    for (const p of paths) {
+      try { got.push(await api.inspectRef(p)); } catch (e) { onError(`沒辦法附上：${e}`); }
+    }
+    setRefs((cur) => [...cur, ...got.filter((g) => !cur.some((c) => c.path.toLowerCase() === g.path.toLowerCase()))].slice(0, 8));
+  };
+  const pick = () => api.pickFolders().then(attach, (e) => onError(`沒辦法開啟資料夾：${e}`));
+  const drop = (paths: string[]) => attach(paths);
+  useEffect(() => api.onDrop((e) => {
+    setDragging(e.phase === 'over');
+    if (e.phase === 'drop' && e.paths.length) drop(e.paths);
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const ask = (q: string) => { onAsk(q, refs.map((r) => r.path)); setRefs([]); };
+  const tries = refs.length ? REF_TRY : TRY_SETS[setIdx];
 
   const active = lessons
     .filter((l) => l.status === 'asking' || l.status === 'generating' || (l.status === 'ready' && l.total && l.step < l.total - 1))
@@ -23,7 +46,8 @@ export function Home({ lessons, settings, update, onAsk, open }: {
   const sectionLabel = active.length > 0 ? '接著學' : '最近學過';
 
   return (
-    <main className="panel plain view-in">
+    <main className={`panel plain view-in${dragging ? ' dropping' : ''}`}>
+      {dragging && <div className="drop-hint" aria-hidden="true"><Icon.folder />放開來，附上這個資料夾</div>}
       <header className="bar"><div className="crumb"><b>新的課</b></div></header>
       <section className="home">
         <div className="col">
@@ -49,18 +73,35 @@ export function Home({ lessons, settings, update, onAsk, open }: {
           <h1>今天想<em>弄懂</em>什麼？</h1>
           <p className="lead">問一個問題，它會一步一步展開成一堂可以動手玩的課。</p>
           <Composer
-            big autoFocus focusOnSlash onSubmit={onAsk} placeholder="一個問題、一個好奇、一個卡住的地方…"
-            foot={<><GenPicker settings={settings} update={update} /><span>Enter 送出 · Shift + Enter 換行</span></>}
+            big autoFocus focusOnSlash onSubmit={ask}
+            placeholder={refs.length ? '問這些資料：架構、原理、某份文件在講什麼…' : '一個問題、一個好奇、一個卡住的地方…'}
+            foot={<>
+              <GenPicker settings={settings} update={update} />
+              <span className="refs">
+                {refs.map((r) => (
+                  <span key={r.path} className="chip ref" title={r.path}>
+                    <Icon.folder /><span className="nm">{r.name}</span>
+                    <button type="button" className="ref-x" aria-label={`移除 ${r.name}`} onClick={() => setRefs((cur) => cur.filter((c) => c.path !== r.path))}><Icon.x /></button>
+                  </span>
+                ))}
+                <button type="button" className="chip pb add-ref" onClick={pick} title="附上資料夾，讓它照裡面的程式或文件來教；也可以直接拖進視窗">
+                  <Icon.folder />{refs.length ? '再加' : '參考資料夾'}
+                </button>
+              </span>
+              <span className="hint">Enter 送出 · Shift + Enter 換行</span>
+            </>}
           />
           <div className="try">
             <span className="lbl">試試</span>
-            {TRY_SETS[setIdx].map((t) => <button key={t} type="button" className="sg" onClick={() => onAsk(t)}>{t}</button>)}
-            <button
-              type="button" className="try-next" onClick={() => setSetIdx((i) => (i + 1) % TRY_SETS.length)}
-              aria-label="換一組範例問題" title="換一組"
-            >
-              <Icon.shuffle />
-            </button>
+            {tries.map((t) => <button key={t} type="button" className="sg" onClick={() => ask(t)}>{t}</button>)}
+            {!refs.length && (
+              <button
+                type="button" className="try-next" onClick={() => setSetIdx((i) => (i + 1) % TRY_SETS.length)}
+                aria-label="換一組範例問題" title="換一組"
+              >
+                <Icon.shuffle />
+              </button>
+            )}
           </div>
           {recent.length > 0 && (
             <div className="cont">

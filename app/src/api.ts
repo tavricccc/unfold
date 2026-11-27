@@ -7,14 +7,23 @@ import bubble from '../fixtures/bubble.json';
 import deriv from '../fixtures/deriv.json';
 import pyth from '../fixtures/pyth.json';
 
+/** A reference folder as the UI shows it. */
+export interface Ref { path: string; name: string }
+
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 export interface Api {
   listLessons(): Promise<LessonMeta[]>;
   getLesson(id: string): Promise<LessonRecord>;
   setProgress(id: string, step: number): Promise<void>;
-  /** askFirst: the learner wants Claude to ask before teaching */
-  startLesson(question: string, gen?: Gen, askFirst?: boolean): Promise<string>;
+  /** askFirst: the learner wants Claude to ask before teaching; refs: folders Claude may read for it */
+  startLesson(question: string, gen?: Gen, askFirst?: boolean, refs?: string[]): Promise<string>;
+  /** the system folder picker; empty when the learner cancels */
+  pickFolders(): Promise<string[]>;
+  /** checks a folder (one dropped on the window, say) and names it */
+  inspectRef(path: string): Promise<Ref>;
+  /** paths dropped on the window; the callback sees each drag's phase */
+  onDrop(cb: (e: { phase: 'over' | 'drop' | 'leave'; paths: string[] }) => void): () => void;
   /** answers to the questions Claude asked; an empty list skips them */
   answerLesson(id: string, answers: Answer[], gen: Gen | undefined): Promise<void>;
   /** writes the rest of a course after a chapter failed or was stopped */
@@ -37,7 +46,24 @@ function tauriApi(): Api {
     listLessons: () => call('list_lessons'),
     getLesson: (id) => call('get_lesson', { id }),
     setProgress: (id, step) => call('set_progress', { id, step }),
-    startLesson: (question, gen, askFirst) => call('start_lesson', { question, model: gen?.model, effort: gen?.effort, askFirst }),
+    startLesson: (question, gen, askFirst, refs) => call('start_lesson', { question, model: gen?.model, effort: gen?.effort, askFirst, refs }),
+    async pickFolders() {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const r = await open({ directory: true, multiple: true, title: '選擇要參考的資料夾' });
+      return r == null ? [] : Array.isArray(r) ? r : [r];
+    },
+    inspectRef: (path) => call('inspect_ref', { path }),
+    onDrop(cb) {
+      let off: (() => void) | undefined;
+      let dead = false;
+      import('@tauri-apps/api/webview').then((m) => m.getCurrentWebview().onDragDropEvent((e) => {
+        const p = e.payload;
+        if (p.type === 'drop') cb({ phase: 'drop', paths: p.paths });
+        else if (p.type === 'leave') cb({ phase: 'leave', paths: [] });
+        else cb({ phase: 'over', paths: p.type === 'enter' ? p.paths : [] });
+      })).then((u) => (dead ? u() : (off = u)));
+      return () => { dead = true; off?.(); };
+    },
     answerLesson: (id, answers, gen) => call('answer_lesson', { id, answers, model: gen?.model, effort: gen?.effort }),
     continueCourse: (id, gen) => call('continue_course', { id, model: gen?.model, effort: gen?.effort }),
     continueLesson: (id, question, gen, chapter) => call('continue_lesson', { id, question, model: gen?.model, effort: gen?.effort, chapter }),
@@ -147,6 +173,93 @@ const PREVIEW_QUIZ: Lesson = {
   },
 };
 
+/** Preview-only: how a project lesson with a reference folder reads, drawn as an architecture. */
+const PREVIEW_ARCH: Lesson = {
+  title: 'Unfold 的架構：一個問題怎麼變成一堂課',
+  subject: 'software',
+  crumbs: ['軟體', '專案架構'],
+  task: '把滑鼠移到元件上看它連到誰；跟著亮起的箭頭走一次資料流。',
+  suggestions: ['sidecar 為什麼要分成獨立的程式？', '追問時怎麼接著同一個 session？', '畫出回答出錯時的流程'],
+  sources: ['README.md', 'src/views/Home.tsx', 'src-tauri/src/lib.rs', 'sidecar/agent.ts', 'src/kit/runtime.js'],
+  steps: [
+    { text: '學生在 `src/views/Home.tsx` 打下問題。**介面只負責顯示**，自己不碰 Claude。', focus: ['learner', 'home', 'learner>home'] },
+    { text: '介面用 Tauri 的 `invoke` 呼叫 `src-tauri/src/lib.rs` 的 `start_lesson`，它先**把這一課存成 JSON**。', reveal: ['core'], focus: ['home>lib', 'lib', 'lib>store', 'store'] },
+    { text: '`lib.rs` 接著啟動 sidecar `sidecar/agent.ts`，把問題當成**一行 JSON 從 stdin 送進去**。', reveal: ['agent'], focus: ['lib>agent', 'agent'] },
+    { text: 'sidecar 用 Agent SDK 的 `query()` 驅動你電腦上的 Claude Code，回答是**照 schema 寫的結構化輸出**。', focus: ['agent>claude', 'claude'] },
+    { text: '寫到一半的標題和步驟變成 NDJSON 事件，`lib.rs` **一邊存檔一邊通知介面**（`lesson-event`）。', focus: ['agent>lib', 'lib', 'lib>store', 'lib>home'] },
+    { text: '最後視覺放進沙盒 iframe，每換一步就用 `postMessage` **送一個 step 進去**，由 `src/kit/runtime.js` 畫出來。', focus: ['home>frame', 'frame'] },
+  ],
+  widget: {
+    kind: 'architecture',
+    architecture: {
+      groups: [
+        { id: 'ui', label: '介面', text: 'React · src/' },
+        { id: 'core', label: '桌面殼', text: 'Tauri · src-tauri/' },
+        { id: 'agent', label: 'Sidecar', text: 'Bun · sidecar/' },
+      ],
+      nodes: [
+        { id: 'learner', label: '學生', kind: 'user' },
+        { id: 'home', label: 'Home / LessonView', text: 'src/views', group: 'ui', kind: 'client' },
+        { id: 'frame', label: '視覺 iframe', text: 'kit/runtime.js', group: 'ui', kind: 'module' },
+        { id: 'lib', label: 'lib.rs', text: '命令與存檔', group: 'core', kind: 'service' },
+        { id: 'store', label: '課程 JSON', text: 'app data/lessons', group: 'core', kind: 'db' },
+        { id: 'agent', label: 'agent.ts', text: '一個問題一個行程', group: 'agent', kind: 'process' },
+        { id: 'claude', label: 'Claude Code', text: 'Agent SDK', group: 'agent', kind: 'external' },
+      ],
+      edges: [
+        { from: 'learner', to: 'home', label: '提問' },
+        { from: 'home', to: 'lib', label: 'invoke' },
+        { from: 'lib', to: 'home', label: 'lesson-event', dashed: true },
+        { from: 'lib', to: 'store', label: '讀寫' },
+        { from: 'lib', to: 'agent', label: 'stdin' },
+        { from: 'agent', to: 'lib', label: 'NDJSON', dashed: true },
+        { from: 'agent', to: 'claude', label: 'query()', both: true },
+        { from: 'home', to: 'frame', label: 'step' },
+      ],
+    },
+  },
+};
+
+/** Preview-only: a flowchart, a diagram whose nodes have shapes. */
+const PREVIEW_FLOW: Lesson = {
+  title: '回答出錯時：檢查、修正一次',
+  subject: 'software',
+  crumbs: ['軟體', '流程'],
+  task: '跟著亮起的路徑走，比較「沒問題」和「有問題」兩條路。',
+  suggestions: ['check.ts 會檢查哪些東西？', '為什麼只修正一次？'],
+  sources: ['sidecar/agent.ts', 'sidecar/check.ts'],
+  steps: [
+    { text: 'Claude 寫完一章，sidecar **先不給你看**，而是交給 `sidecar/check.ts` 檢查。', focus: ['got', 'check', 'got>check'] },
+    { text: '檢查視覺的每個 id、表達式和圖示。**沒有問題就直接存檔顯示**。', focus: ['bad', 'check>bad', 'bad>show', 'show'] },
+    { text: '有問題時，在**同一個 session** 把問題列給 Claude，請它只修正、內容不變。', focus: ['bad>fix', 'fix'] },
+    { text: '修好了就照常顯示；**還是不行才回報錯誤**，你可以再試一次。', focus: ['fix>ok', 'ok', 'ok>show', 'ok>err', 'err'] },
+  ],
+  widget: {
+    kind: 'diagram',
+    diagram: {
+      layout: 'down',
+      nodes: [
+        { id: 'got', label: '收到回答', shape: 'terminal' },
+        { id: 'check', label: '檢查視覺與步驟', text: 'check.ts' },
+        { id: 'bad', label: '有問題？', shape: 'decision' },
+        { id: 'fix', label: '請 Claude 修正', text: '同一個 session' },
+        { id: 'ok', label: '修好了？', shape: 'decision' },
+        { id: 'show', label: '存檔並顯示', shape: 'io' },
+        { id: 'err', label: '回報錯誤', shape: 'terminal' },
+      ],
+      edges: [
+        { from: 'got', to: 'check' },
+        { from: 'check', to: 'bad' },
+        { from: 'bad', to: 'show', label: '沒有' },
+        { from: 'bad', to: 'fix', label: '有' },
+        { from: 'fix', to: 'ok' },
+        { from: 'ok', to: 'show', label: '是' },
+        { from: 'ok', to: 'err', label: '否' },
+      ],
+    },
+  },
+};
+
 function mockApi(): Api {
   const fixtures = [bubble, pyth, deriv] as { lesson: NonNullable<LessonRecord['lesson']>; model: string }[];
   const questions = ['泡泡排序是怎麼運作的？', '畢氏定理為什麼成立？', '導數到底在算什麼？'];
@@ -162,11 +275,13 @@ function mockApi(): Api {
   const meta = (r: LessonRecord): LessonMeta => ({
     id: r.id, question: r.question, status: r.status, createdAt: r.createdAt, step: r.step,
     title: r.course?.title ?? r.lesson?.title, subject: r.lesson?.subject,
-    total: r.lesson && itemsOf(chaptersOf(r)).length,
+    total: r.lesson && itemsOf(chaptersOf(r)).length, refs: r.refs?.length,
   });
   const pickFixture = (q: string): { lesson: Lesson; model: string } => {
     if (/測驗|考考|練習|題目|檢核/i.test(q)) return { lesson: PREVIEW_QUIZ, model: 'preview' };
     if (/二分|程式碼|追蹤|code|python/i.test(q)) return { lesson: PREVIEW_CODE, model: 'preview' };
+    if (/架構|結構|專案|系統/.test(q)) return { lesson: PREVIEW_ARCH, model: 'preview' };
+    if (/流程|判斷|迴圈/.test(q)) return { lesson: PREVIEW_FLOW, model: 'preview' };
     if (/畢氏|三角|幾何|證明/i.test(q)) return fixtures[1];
     if (/導數|斜率|微積分|函數/.test(q)) return fixtures[2];
     return fixtures[0];
@@ -212,9 +327,17 @@ function mockApi(): Api {
       return structuredClone(r);
     },
     async setProgress(id, step) { const r = store.get(id); if (r) r.step = step; },
-    async startLesson(question, _gen, askFirst) {
+    async startLesson(question, _gen, askFirst, refs) {
       const id = `m${Date.now().toString(36)}`;
-      store.set(id, { id, question, status: 'generating', createdAt: Date.now(), step: 0 });
+      store.set(id, { id, question, status: 'generating', createdAt: Date.now(), step: 0, ...(refs?.length ? { refs } : {}) });
+      if (refs?.length) {
+        const t: number[] = [];
+        timers.set(id, t);
+        const paths = ['README.md', 'package.json', 'src-tauri/src/lib.rs', 'sidecar/agent.ts', 'src/App.tsx'];
+        paths.forEach((p, k) => t.push(window.setTimeout(() => emit({ id, type: 'status', text: `正在讀 ${p}…` }), 200 + k * 260)));
+        playChapter(id, { lesson: PREVIEW_ARCH, model: 'preview' }, t, paths.length * 260);
+        return id;
+      }
       const t: number[] = [];
       timers.set(id, t);
       if (askFirst || question.length <= 6 || /整課|一整|全部|單元/.test(question)) {
@@ -267,7 +390,7 @@ function mockApi(): Api {
         emit({ id, type: 'ready' });
       }, 2400));
       t.push(window.setTimeout(() => emit({ id, type: 'status', text: '正在想怎麼教…' }), 300));
-      if (/測驗|考考|練習|題目|檢核|二分|程式碼/i.test(question)) {
+      if (/測驗|考考|練習|題目|檢核|二分|程式碼|架構|流程/i.test(question)) {
         const f = pickFixture(question);
         const { widget: _w, ...draft } = f.lesson;
         draft.steps.forEach((_, i) => t.push(window.setTimeout(() => {
@@ -318,6 +441,9 @@ function mockApi(): Api {
       emit({ id, type: 'error', message: '你停止了這次生成' });
     },
     async claudeStatus() { return 'preview'; },
+    async pickFolders() { return ['C:\\Users\\demo\\projects\\unfold']; },
+    async inspectRef(path) { return { path, name: path.split(/[\\/]/).filter(Boolean).pop() ?? path }; },
+    onDrop() { return () => {}; },
     async openLink(url) { open(url, '_blank', 'noopener'); },
     onLessonEvent(cb) {
       const h = (e: Event) => cb((e as CustomEvent<LessonEvent>).detail);

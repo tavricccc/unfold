@@ -190,7 +190,7 @@
   .u-node.sh.u-focus>.u-shape>:not(.lid){fill:color-mix(in srgb,var(--acc-soft) 70%,var(--raise,var(--bg)))}
   .u-node.sh.u-focus>.u-shape{filter:drop-shadow(0 6px 12px color-mix(in srgb,var(--acc) 30%,transparent))}
   .u-node.sh:hover>.u-shape{filter:drop-shadow(0 6px 12px rgb(16 32 40 / .16))}
-  .u-node.decision{padding:18px 30px;min-width:120px;min-height:66px}
+  .u-node.decision{padding:13px 28px;min-width:112px;min-height:54px}
   .u-node.io{padding:10px 26px}
   .u-node.store{padding:17px 16px 11px}
   /* architecture */
@@ -668,7 +668,10 @@
       if (t + r.height > H) els[id].style.top = `${parseFloat(els[id].style.top) - (t + r.height - H)}px`;
     }
   }
-  /** Draws the edges between placed nodes; `bendOf(e, a, b)` may curve one. Returns [{ e, g }]. */
+  /**
+   * Draws the edges between placed nodes; `bendOf(e, a, b)` may curve one (null: straight). Two edges
+   * that join the same pair both ways run side by side, each labelled on its own side. Returns [{ e, g }].
+   */
   function drawEdges(svg, box, edges, els, shapes, reg, bendOf) {
     const b0 = box.getBoundingClientRect();
     const geo = (id) => { const r = els[id].getBoundingClientRect(); return { x: r.left - b0.left + r.width / 2, y: r.top - b0.top + r.height / 2, w: r.width / 2 + 6, h: r.height / 2 + 6, diamond: shapes[id] === 'decision' }; };
@@ -682,16 +685,29 @@
     const list = [];
     edges.forEach((e) => {
       if (!els[e.from] || !els[e.to]) return;
-      const a = geo(e.from), b = geo(e.to);
+      let a = geo(e.from), b = geo(e.to);
+      let bend = bendOf(e, a, b);
+      // a two-way pair: shift each edge off the line between the centres, to opposite sides
+      let side = null;
+      if (bend == null && edges.some((o) => o.from === e.to && o.to === e.from)) {
+        const sign = e.from < e.to ? 1 : -1;
+        const dx = (b.x - a.x) * sign, dy = (b.y - a.y) * sign, len = Math.hypot(dx, dy) || 1;
+        side = { x: (-dy / len) * sign, y: (dx / len) * sign };
+        const off = 7;
+        a = { ...a, x: a.x + side.x * off, y: a.y + side.y * off };
+        b = { ...b, x: b.x + side.x * off, y: b.y + side.y * off };
+      }
       const [x1, y1] = clip(a, b.x, b.y), [x2, y2] = clip(b, a.x, a.y);
-      const g = U.arrow(svg, x1, y1, x2, y2, { bend: bendOf(e, a, b), dashed: e.dashed, both: e.both, class: 'u-edge' });
+      const g = U.arrow(svg, x1, y1, x2, y2, { bend: bend || 0, dashed: e.dashed, both: e.both, class: 'u-edge' });
       const len = g.shaft && g.shaft.getTotalLength ? Math.ceil(g.shaft.getTotalLength()) : 0;
       if (len > 0) g.dataset.drawLen = String(len);
       // a dot that runs along the edge while it is in focus: what flows, and which way
       const dot = U.el(g, 'circle', { r: 3.6, class: 'u-pulse' });
       U.el(dot, 'animateMotion', { dur: `${Math.max(0.9, Math.min(2.4, len / 160)).toFixed(2)}s`, repeatCount: 'indefinite', path: g.shaft.getAttribute('d') });
       if (e.label) {
-        const t = U.text(g, g.mid.x, g.mid.y, e.label, { anchor: 'middle', class: 'u-elabel' });
+        const across = side && Math.abs(side.x) > 0.6;
+        const lx = g.mid.x + (side ? side.x * (across ? 10 : 0) : 0), ly = g.mid.y + (side && !across ? side.y * 13 : 0);
+        const t = U.text(g, lx, ly, e.label, { anchor: across ? (side.x > 0 ? 'start' : 'end') : 'middle', class: 'u-elabel' });
         const bb = t.getBBox();
         const bg = U.el(g, 'rect', { x: bb.x - 6, y: bb.y - 2.5, width: bb.width + 12, height: bb.height + 5, rx: 6, fill: 'var(--bg)', stroke: 'var(--line)', 'stroke-width': 0.8 });
         g.insertBefore(bg, t);
@@ -776,8 +792,7 @@
       clampNodes(box, els, W, H);
       edgeEls = drawEdges(svg, box, edges, els, shapes, reg, (e) => {
         if (e.bend != null) return e.bend;
-        if (layout === 'cycle') return 0.18;
-        return edges.some((o) => o.from === e.to && o.to === e.from) ? 0.14 : 0;
+        return layout === 'cycle' ? 0.18 : null;
       });
       hoverLinks(els, edgeEls);
       missing(reg, steps);
@@ -881,7 +896,7 @@
         const p = band[e.from], q = band[e.to];
         // within one band, skipping over a neighbour: arc around it
         if (p && q && p.i === q.i && Math.abs(p.k - q.k) > 1) return (across ? (b.y > a.y ? 1 : -1) : (b.x > a.x ? 1 : -1)) * 0.22;
-        return edges.some((o) => o.from === e.to && o.to === e.from) ? 0.14 : 0;
+        return null;
       });
       hoverLinks(els, edgeEls);
       missing(reg, steps);

@@ -1,7 +1,7 @@
 // Unfold sidecar: answers one question of a lesson through the Claude Agent SDK.
 // Protocol: one JSON request on stdin, NDJSON events on stdout.
 //   in:  { "question": string, "model"?: string, "effort"?: "low" | "medium" | "high" | "xhigh" | "max",
-//          "askFirst"?: boolean, "record"?: LessonRecord, "at"?: number, "answers"?: Answer[], "course"?: true }
+//          "askFirst"?: boolean, "refs"?: string[], "record"?: LessonRecord, "at"?: number, "answers"?: Answer[], "course"?: true }
 //        Without "record" it is the first question of a new lesson ("askFirst": the learner wants to be
 //        asked first). With it: "answers" are the learner's answers to Claude's questions (the lesson is
 //        "asking"); "course" writes the course's remaining chapters; otherwise it is a follow-up asked
@@ -10,6 +10,9 @@
 //        one from an outline of the lesson.
 //        A new lesson is answered with questions ("ask"), one chapter, or a course: an outline whose
 //        chapters are then written one after another in the same session.
+//        "refs" (a new lesson; later calls take record.refs) are folders Claude may read for the whole
+//        lesson with Read, Glob and Grep, and nothing outside them. The files it reads for an answer
+//        are kept with the answer as "sources".
 //   out: { "type": "status", "text": string }
 //        { "type": "session", "id": string }                   the session this lesson now lives in
 //        { "type": "partial", "lesson": Draft }                mode, title, steps or text so far
@@ -21,17 +24,18 @@
 //          lesson never shows the course as stopped between two chapters
 //        { "type": "error", "message": string }
 // Env: UNFOLD_CLAUDE_PATH, the Claude Code executable to drive (set by the app).
-import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, query, tool, type HookCallback } from '@anthropic-ai/claude-agent-sdk';
+import { isAbsolute, resolve } from 'node:path';
 import { z } from 'zod';
 import { chaptersOf, courseWritten, type Chapter } from '../src/chapters.ts';
 import type { Answer as Reply, Ask, Cost, Course, Draft, Lesson, LessonRecord, Part, Widget } from '../src/lesson.ts';
 import { problems } from './check.ts';
+import { REF_TOOLS, refTarget, shortPath } from './refs.ts';
 import { parsePartial } from './partial.ts';
-import { RESPONSE_SCHEMA, SYSTEM_PROMPT } from './prompt.ts';
+import { RESPONSE_SCHEMA, SYSTEM_PROMPT, refsPrompt } from './prompt.ts';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const READ_TOOL = 'mcp__unfold__read_chapter';
-
 const emit = (o: unknown) => process.stdout.write(JSON.stringify(o) + '\n');
 
 async function readStdin(): Promise<string> {
@@ -41,7 +45,7 @@ async function readStdin(): Promise<string> {
 }
 
 interface Req {
-  question: string; model?: string; effort?: string; askFirst?: boolean;
+  question: string; model?: string; effort?: string; askFirst?: boolean; refs?: string[];
   record?: LessonRecord; at?: number; answers?: Reply[]; course?: boolean;
 }
 
@@ -179,6 +183,23 @@ async function main() {
   const rec = req.record;
   const chs = rec ? chaptersOf(rec) : [];
   const at = Math.max(0, Math.min(req.at ?? chs.length - 1, chs.length - 1));
+  // fixed for the lesson's whole life, so its tools and system prompt never change between calls
+  const refs = (rec ? rec.refs : req.refs)?.filter((r) => typeof r === 'string' && isAbsolute(r)) ?? [];
+  /** the files read for the answer being written, shown to the learner as its sources */
+  const reads = new Set<string>();
+  const sourced = <T extends object>(v: T): T => {
+    const sources = [...reads];
+    reads.clear();
+    return sources.length ? { ...v, sources } : v;
+  };
+  /** Keeps every file tool call inside the reference folders, whatever Claude Code would allow on its own. */
+  const guard: HookCallback = async (input) => {
+    if (input.hook_event_name !== 'PreToolUse' || !REF_TOOLS.includes(input.tool_name)) return {};
+    const t = refTarget(input.tool_name, (input.tool_input ?? {}) as Record<string, unknown>, refs);
+    if ('deny' in t) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: t.deny } };
+    if (input.tool_name === 'Read') reads.add(shortPath(t.path, refs));
+    return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } };
+  };
 
   emit({ type: 'status', text: rec ? '正在讀你的追問…' : '正在讀你的問題…' });
   let model = req.model ?? 'sonnet';
@@ -215,15 +236,24 @@ async function main() {
     const q = query({
       prompt,
       options: {
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: refs.length ? `${SYSTEM_PROMPT}\n\n${refsPrompt(refs)}` : SYSTEM_PROMPT,
         model,
         ...(effort ? { effort } : {}),
         ...(resume ? { resume } : {}),
-        tools: [],
+        tools: refs.length ? REF_TOOLS : [],
         mcpServers: { unfold },
         allowedTools: [READ_TOOL],
         settingSources: [],
-        maxTurns: 8,
+        // reading a project takes turns of its own
+        maxTurns: refs.length ? 48 : 8,
+        ...(refs.length ? {
+          additionalDirectories: refs,
+          hooks: { PreToolUse: [{ matcher: REF_TOOLS.join('|'), hooks: [guard] }] },
+          canUseTool: async (name: string, input: Record<string, unknown>) => {
+            const t = REF_TOOLS.includes(name) ? refTarget(name, input, refs) : { deny: `${name} is not available` };
+            return 'deny' in t ? { behavior: 'deny' as const, message: t.deny } : { behavior: 'allow' as const, updatedInput: input };
+          },
+        } : {}),
         includePartialMessages: true,
         outputFormat: { type: 'json_schema', schema: RESPONSE_SCHEMA },
         ...(process.env.UNFOLD_CLAUDE_PATH ? { pathToClaudeCodeExecutable: process.env.UNFOLD_CLAUDE_PATH } : {}),
@@ -241,6 +271,22 @@ async function main() {
           block = ev.content_block.name ?? '';
           json = '';
           if (block === READ_TOOL) setPhase('正在看前面寫過的內容…');
+          if (REF_TOOLS.includes(block)) setPhase(block === 'Read' ? '正在讀資料…' : block === 'Glob' ? '正在看資料夾裡有什麼…' : '正在資料裡搜尋…');
+        }
+        if (ev?.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta' && REF_TOOLS.includes(block)) {
+          json += ev.delta.partial_json;
+          continue;
+        }
+        if (ev?.type === 'content_block_stop' && REF_TOOLS.includes(block)) {
+          try {
+            const inp = JSON.parse(json || '{}');
+            const where = typeof inp.file_path === 'string' ? shortPath(resolve(inp.file_path), refs) : typeof inp.path === 'string' ? shortPath(resolve(inp.path), refs) : '';
+            if (block === 'Read' && where) setPhase(`正在讀 ${where}…`);
+            else if (block === 'Grep' && typeof inp.pattern === 'string') setPhase(`正在搜尋「${inp.pattern.slice(0, 40)}」…`);
+            else if (block === 'Glob' && where) setPhase(`正在看 ${where} 裡有什麼…`);
+          } catch { /* a call that does not parse is refused by Claude Code itself */ }
+          block = '';
+          continue;
         }
         if (ev?.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta' && block !== READ_TOOL) {
           json += ev.delta.partial_json;
@@ -305,7 +351,8 @@ async function main() {
       prefix = `第 ${k + 1} / ${n} 章 · `;
       setPhase('正在想怎麼教…');
       const r = k === from && first ? await first(chapterAsk(course, k)) : await run(chapterAsk(course, k), sid, { any: false });
-      const { value, cost } = await settle(r, toLesson);
+      const settled = await settle(r, toLesson);
+      const value = sourced(settled.value), cost = settled.cost;
       written++;
       const next = k + 1 < n ? { question: course.outline[k + 1].goal, at: written - 1 } : undefined;
       if (k === 0) emit({ type: 'lesson', lesson: value, model, cost, next });
@@ -316,8 +363,9 @@ async function main() {
   /** Plays out how a new lesson starts. */
   const begin = async (first: { answer: Answer; cost: Cost }, mayAsk: boolean) => {
     const { value, cost } = await settle(first, (a) => toStart(a, mayAsk));
-    if (value.kind === 'ask') return emit({ type: 'ask', ask: value.ask, model, cost });
-    if (value.kind === 'lesson') return emit({ type: 'lesson', lesson: value.lesson, model, cost });
+    if (value.kind === 'ask') { reads.clear(); return emit({ type: 'ask', ask: value.ask, model, cost }); }
+    if (value.kind === 'lesson') return emit({ type: 'lesson', lesson: sourced(value.lesson), model, cost });
+    // what was read to plan the course counts toward its first chapter
     emit({ type: 'outline', course: value.course, model, cost });
     await writeCourse(value.course, 0, 0);
   };
@@ -367,7 +415,7 @@ async function main() {
   const fresh = `這是一堂已經在上的課，你在新的對話裡接手。以下是到目前為止的內容（步驟前的數字是視覺用的步驟編號）：\n\n${outline(chs)}\n\n要看某一章現在的完整視覺與步驟，用 read_chapter。\n\n${ask}`;
   const result = await resumeOr(ask, () => fresh);
   const { value, cost } = await settle(result, (a) => toPart(a, req.question, chs, at));
-  emit({ type: 'part', part: value, model, cost });
+  emit({ type: 'part', part: value.lesson ? { ...value, lesson: sourced(value.lesson) } : sourced(value), model, cost });
 }
 
 main().catch((e) => {

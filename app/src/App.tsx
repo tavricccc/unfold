@@ -72,9 +72,9 @@ export default function App() {
     return () => removeEventListener('keydown', onKey);
   }, [settings.sidebarOpen, update]);
 
-  const ask = async (question: string) => {
+  const ask = async (question: string, refs?: string[]) => {
     try {
-      const id = await api.startLesson(question, genOf(settings), settings.askFirst);
+      const id = await api.startLesson(question, genOf(settings), settings.askFirst, refs);
       refresh();
       setView({ name: 'lesson', id });
     } catch (e) {
@@ -102,7 +102,7 @@ export default function App() {
         onDelete={deleteLesson} onSearch={() => setCmdOpen(true)} collapsed={!settings.sidebarOpen}
       />
       {view.name === 'home' && (
-        <Home lessons={lessons} settings={settings} update={update} onAsk={ask} open={(id) => setView({ name: 'lesson', id })} />
+        <Home lessons={lessons} settings={settings} update={update} onAsk={ask} open={(id) => setView({ name: 'lesson', id })} onError={(m) => notify(m, 'err')} />
       )}
       {view.name === 'lesson' && (
         <LessonView
