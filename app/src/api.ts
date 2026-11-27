@@ -34,6 +34,7 @@ export interface Api {
   deleteLesson(id: string): Promise<void>;
   cancelLesson(id: string): Promise<void>;
   claudeStatus(): Promise<string>;
+  appVersion(): Promise<string>;
   /** a newer release, if one is published; install() downloads it, installs it and restarts */
   checkUpdate(): Promise<{ version: string; install: () => Promise<void> } | null>;
   openLink(url: string): Promise<void>;
@@ -73,6 +74,7 @@ function tauriApi(): Api {
     deleteLesson: (id) => call('delete_lesson', { id }),
     cancelLesson: (id) => call('cancel_lesson', { id }),
     claudeStatus: () => call('claude_status'),
+    appVersion: async () => (await import('@tauri-apps/api/app')).getVersion(),
     async checkUpdate() {
       const { check } = await import('@tauri-apps/plugin-updater');
       const u = await check();
@@ -457,6 +459,7 @@ function mockApi(): Api {
     },
     async claudeStatus() { return 'preview'; },
     async checkUpdate() { return null; },
+    async appVersion() { return 'preview'; },
     async pickFolders() { return ['C:\\Users\\demo\\projects\\unfold']; },
     async inspectRef(path) { return { path, name: path.split(/[\\/]/).filter(Boolean).pop() ?? path }; },
     onDrop() { return () => {}; },
