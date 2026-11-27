@@ -51,7 +51,7 @@ export function Home({ lessons, settings, update, onAsk, open, onError, claude, 
   return (
     <main className={`panel plain view-in${dragging ? ' dropping' : ''}`}>
       {dragging && <div className="drop-hint" aria-hidden="true"><Icon.folder />放開來，附上這個資料夾</div>}
-      <header className="bar"><div className="crumb"><b>新的課</b></div></header>
+      <header className="bar"><div className="crumb"><b>問一問</b></div></header>
       <section className="home">
         <div className="col">
           <svg className="art" width="200" height="118" viewBox="0 0 200 118" aria-hidden="true">

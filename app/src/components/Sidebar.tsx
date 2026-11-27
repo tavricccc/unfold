@@ -50,7 +50,7 @@ export function Sidebar({ lessons, view, go, claude, onDelete, onSearch, collaps
         )}
       </div>
       <button type="button" className={`newb${view.name === 'home' ? ' on' : ''}`} onClick={() => go({ name: 'home' })}>
-        <Icon.plus />新的課<span className="kbd">Ctrl N</span>
+        <Icon.plus />問一問<span className="kbd">Ctrl N</span>
       </button>
       {lessons.length > 4 && (
         <div className="side-find">
