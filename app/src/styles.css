@@ -100,7 +100,7 @@ code.ic { font-family: var(--mono); font-size: .88em; background: var(--sub); pa
   display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: 32px minmax(0, 1fr); height: 100vh;
   transition: grid-template-columns .28s var(--spring);
 }
-.app.mac { grid-template-rows: 40px minmax(0, 1fr); }
+.app.mac { grid-template-rows: 44px minmax(0, 1fr); }
 .app.side-off { grid-template-columns: 0px minmax(0, 1fr); }
 .app.side-off .panel { margin-left: 8px; }
 
