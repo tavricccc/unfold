@@ -25,8 +25,10 @@ export interface Chapter {
   title: string;
   /** the title Claude wrote */
   written: string;
-  /** the question that opened the chapter */
+  /** the question that opened the chapter (a planned course chapter: its goal) */
   question: string;
+  /** one of the course's planned chapters, not opened by a question */
+  planned?: boolean;
   /** every visual the chapter has had, oldest first; an extend that redraws adds one */
   versions: Widget[];
   /** what to try, per version */
@@ -49,11 +51,11 @@ export function chaptersOf(r: LessonRecord): Chapter[] {
     if (mode === 'chapter' && p.lesson) {
       const c = out.length;
       out.push({
-        title: r.names?.[c] || p.lesson.title, written: p.lesson.title, question: p.question,
+        title: r.names?.[c] || p.lesson.title, written: p.lesson.title, question: p.question, planned: p.course,
         versions: [p.lesson.widget], tasks: [p.lesson.task], steps: [...p.lesson.steps],
         items: p.lesson.steps.map((st, local) => ({ kind: 'step', text: st.text, chapter: c, local, version: 0, part, i: 0 })),
       });
-      if (part > 0) out[c].items[0].asked = p.question;
+      if (part > 0 && !p.course) out[c].items[0].asked = p.question;
       return;
     }
     const c = Math.min(p.at ?? out.length - 1, out.length - 1);
@@ -86,3 +88,6 @@ export function lastSuggestions(r: LessonRecord): string[] {
   const p = more[more.length - 1];
   return (p ? p.suggestions ?? p.lesson?.suggestions : r.lesson?.suggestions) ?? [];
 }
+
+/** How many of the course's planned chapters are written (the lesson's first chapter is one). */
+export const courseWritten = (r: LessonRecord) => (r.lesson ? 1 : 0) + (r.more ?? []).filter((p) => p.course).length;

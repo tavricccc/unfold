@@ -1,22 +1,29 @@
 // Unfold sidecar: answers one question of a lesson through the Claude Agent SDK.
 // Protocol: one JSON request on stdin, NDJSON events on stdout.
 //   in:  { "question": string, "model"?: string, "effort"?: "low" | "medium" | "high" | "xhigh" | "max",
-//          "record"?: LessonRecord, "at"?: number }
-//        Without "record" it is the first question of a new lesson; with it, a follow-up asked while
-//        reading chapter "at". A follow-up resumes the lesson's session (record.session) so Claude
-//        keeps its own earlier answers in context; if that session cannot be resumed it starts a new
+//          "askFirst"?: boolean, "record"?: LessonRecord, "at"?: number, "answers"?: Answer[], "course"?: true }
+//        Without "record" it is the first question of a new lesson ("askFirst": the learner wants to be
+//        asked first). With it: "answers" are the learner's answers to Claude's questions (the lesson is
+//        "asking"); "course" writes the course's remaining chapters; otherwise it is a follow-up asked
+//        while reading chapter "at". Calls on a record resume its session (record.session) so Claude
+//        keeps its own earlier answers in context; if that session cannot be resumed they start a new
 //        one from an outline of the lesson.
+//        A new lesson is answered with questions ("ask"), one chapter, or a course: an outline whose
+//        chapters are then written one after another in the same session.
 //   out: { "type": "status", "text": string }
 //        { "type": "session", "id": string }                   the session this lesson now lives in
 //        { "type": "partial", "lesson": Draft }                mode, title, steps or text so far
-//        { "type": "lesson", "lesson": Lesson, "model", "cost" }   the first answer
-//        { "type": "part", "part": Part, "model", "cost" }         a follow-up's answer
+//        { "type": "ask", "ask": Ask, "model", "cost" }        questions for the learner; the run ends
+//        { "type": "outline", "course": Course, "model", "cost" }  a course's plan; chapters follow
+//        { "type": "lesson", "lesson": Lesson, "model", "cost" }   the first chapter
+//        { "type": "next", "question": string, "at": number }  a course chapter after the first is being written
+//        { "type": "part", "part": Part, "model", "cost" }         a follow-up's answer, or a course chapter
 //        { "type": "error", "message": string }
 // Env: UNFOLD_CLAUDE_PATH, the Claude Code executable to drive (set by the app).
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { chaptersOf, type Chapter } from '../src/chapters.ts';
-import type { Cost, Draft, Lesson, LessonRecord, Part, Widget } from '../src/lesson.ts';
+import { chaptersOf, courseWritten, type Chapter } from '../src/chapters.ts';
+import type { Answer as Reply, Ask, Cost, Course, Draft, Lesson, LessonRecord, Part, Widget } from '../src/lesson.ts';
 import { problems } from './check.ts';
 import { parsePartial } from './partial.ts';
 import { RESPONSE_SCHEMA, SYSTEM_PROMPT } from './prompt.ts';
@@ -32,15 +39,25 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-interface Req { question: string; model?: string; effort?: string; record?: LessonRecord; at?: number }
+interface Req {
+  question: string; model?: string; effort?: string; askFirst?: boolean;
+  record?: LessonRecord; at?: number; answers?: Reply[]; course?: boolean;
+}
 
 /** What Claude returns, before it is checked against its mode. */
 interface Answer {
-  mode: 'chapter' | 'extend' | 'text';
+  mode: 'ask' | 'course' | 'chapter' | 'extend' | 'text';
   title?: string; subject?: Lesson['subject']; crumbs?: string[]; text?: string;
-  steps?: Lesson['steps']; task?: string; suggestions: string[]; widget?: Widget;
+  questions?: Ask['questions']; outline?: Course['outline'];
+  steps?: Lesson['steps']; task?: string; suggestions?: string[]; widget?: Widget;
   edits?: { find: string; replace: string }[];
 }
+
+/** How a new lesson starts: questions first, a course plan, or the one chapter. */
+type Start =
+  | { kind: 'ask'; ask: Ask }
+  | { kind: 'course'; course: Course & { subject: Lesson['subject']; crumbs: string[] } }
+  | { kind: 'lesson'; lesson: Lesson };
 
 /** One chapter as it is now, for read_chapter. */
 function chapterView(ch: Chapter, n: number) {
@@ -87,17 +104,46 @@ function checkWidget(w: Widget | undefined, steps: Lesson['steps']): Widget {
   return w;
 }
 
-/** Turns a first answer into the lesson. */
+const lacking = (a: Answer, keys: readonly (keyof Answer)[]) =>
+  keys.filter((k) => !a[k] || (Array.isArray(a[k]) && !(a[k] as unknown[]).length));
+
+/** Turns a chapter answer into a chapter. */
 function toLesson(a: Answer): Lesson {
-  if (a.mode !== 'chapter') throw new Error(`a new lesson must start with a chapter, got ${a.mode}`);
-  const lacks = (['title', 'steps', 'task', 'subject', 'crumbs'] as const).filter((k) => !a[k] || (Array.isArray(a[k]) && !(a[k] as unknown[]).length));
+  if (a.mode !== 'chapter') throw new Fixable([`this answer must be a chapter (mode "chapter"), got "${a.mode}"`]);
+  const lacks = lacking(a, ['title', 'steps', 'task', 'subject', 'crumbs']);
   if (lacks.length) throw new Fixable([`a chapter needs ${lacks.join(', ')}`]);
-  return { title: a.title!, subject: a.subject!, crumbs: a.crumbs!, steps: a.steps!, task: a.task!, suggestions: a.suggestions, widget: checkWidget(a.widget, a.steps!) };
+  return { title: a.title!, subject: a.subject!, crumbs: a.crumbs!, steps: a.steps!, task: a.task!, suggestions: a.suggestions ?? [], widget: checkWidget(a.widget, a.steps!) };
 }
+
+/** Turns the first answer of a new lesson into how it starts; `mayAsk` is false once the learner answered. */
+function toStart(a: Answer, mayAsk: boolean): Start {
+  if (a.mode === 'ask') {
+    if (!mayAsk) throw new Fixable(['the learner already answered your questions; do not ask again, teach with "chapter" or "course"']);
+    const qs = (a.questions ?? []).filter((q) => q.text?.trim() && q.options?.length >= 2);
+    if (!qs.length) throw new Fixable(['ask needs questions, each with at least two options']);
+    return { kind: 'ask', ask: { ...(a.text?.trim() ? { text: a.text.trim() } : {}), questions: qs } };
+  }
+  if (a.mode === 'course') {
+    const lacks = lacking(a, ['title', 'subject', 'crumbs', 'outline']);
+    if (lacks.length) throw new Fixable([`a course needs ${lacks.join(', ')}`]);
+    if (a.outline!.length < 2) throw new Fixable(['a course needs at least two chapters; for one, answer with "chapter"']);
+    return { kind: 'course', course: { title: a.title!, subject: a.subject!, crumbs: a.crumbs!, outline: a.outline! } };
+  }
+  if (a.mode !== 'chapter') throw new Fixable([`a new lesson starts with "ask", "course" or "chapter", got "${a.mode}"`]);
+  return { kind: 'lesson', lesson: toLesson(a) };
+}
+
+const answersText = (ask: Ask | undefined, answers: Reply[]) => answers.length
+  ? `學生的回答：\n${answers.map((r) => `- ${r.question}：${r.answer}`).join('\n')}\n請依照這些回答開始教：用 "chapter"（一章講清楚）或 "course"（一整課），不要再問。`
+  : `學生跳過了你的問題${ask ? `（${ask.questions.map((q) => q.text).join('；')}）` : ''}，請你自己判斷怎麼教最好：用 "chapter" 或 "course"，不要再問。`;
+
+const chapterAsk = (course: Course, k: number) =>
+  `現在寫第 ${k + 1} 章（共 ${course.outline.length} 章）：「${course.outline[k].title}」——${course.outline[k].goal}\n用 "chapter" 回答，接著前面的章節教，不重複已經教過的。`;
 
 /** Turns a follow-up answer into a part, with any html edits applied to the chapter's current visual. */
 function toPart(a: Answer, q: string, chs: Chapter[], at: number): Part {
-  const base = { question: q, mode: a.mode, suggestions: a.suggestions };
+  if (a.mode === 'ask' || a.mode === 'course') throw new Fixable([`"${a.mode}" is only for the first answer of a new lesson; answer this follow-up with "chapter", "extend" or "text"`]);
+  const base = { question: q, mode: a.mode, suggestions: a.suggestions ?? [] };
   if (a.mode === 'chapter') return { ...base, lesson: toLesson(a) };
   if (a.mode === 'text') {
     if (!a.text?.trim()) throw new Fixable(['the text reply is empty']);
@@ -156,7 +202,9 @@ async function main() {
 
   let sid: string | undefined;
   let phase = '';
-  const setPhase = (p: string) => { if (p !== phase) { phase = p; emit({ type: 'status', text: p }); } };
+  /** while a course is written: which chapter, shown before every status */
+  let prefix = '';
+  const setPhase = (p: string) => { if (prefix + p !== phase) { phase = prefix + p; emit({ type: 'status', text: phase }); } };
 
   /** One run. Returns the answer and the run's cost; `shown` tells whether the learner saw any of it. */
   const run = async (prompt: string, resume: string | undefined, shown: { any: boolean }) => {
@@ -200,6 +248,9 @@ async function main() {
           const { widget, ...rest } = d;
           const draft: Draft = { mode: rest.mode, title: rest.title, steps: rest.steps, crumbs: rest.crumbs };
           if (rest.mode === 'text') draft.text = streamingText(json) ?? rest.text;
+          // questions and a course plan arrive whole; only their title or opening line streams
+          if (rest.mode === 'ask') { draft.text = rest.text; setPhase('正在想要先問你什麼…'); }
+          if (rest.mode === 'course') setPhase('正在規劃整課…');
           const key = `${draft.mode}|${draft.title ?? ''}|${draft.steps?.length ?? 0}|${Math.floor((draft.text?.length ?? 0) / 12)}`;
           if ((draft.title || draft.text || draft.steps?.length) && key !== sent) {
             sent = key; shown.any = true;
@@ -243,29 +294,78 @@ async function main() {
     }
   };
 
+  /**
+   * Writes the course's chapters from `from` on, in the current session; `first`, when given, runs
+   * the first of them (to resume or rebuild a session).
+   */
+  const writeCourse = async (course: Course, from: number, written: number, first?: (prompt: string) => ReturnType<typeof run>) => {
+    const n = course.outline.length;
+    for (let k = from; k < n; k++) {
+      prefix = `第 ${k + 1} / ${n} 章 · `;
+      setPhase('正在想怎麼教…');
+      const at = written - 1;
+      if (k > 0) emit({ type: 'next', question: course.outline[k].goal, at });
+      const r = k === from && first ? await first(chapterAsk(course, k)) : await run(chapterAsk(course, k), sid, { any: false });
+      const { value, cost } = await settle(r, toLesson);
+      if (k === 0) emit({ type: 'lesson', lesson: value, model, cost });
+      else emit({ type: 'part', part: { question: course.outline[k].goal, mode: 'chapter', course: true, lesson: value, suggestions: value.suggestions }, model, cost });
+      written++;
+    }
+  };
+
+  /** Plays out how a new lesson starts. */
+  const begin = async (first: { answer: Answer; cost: Cost }, mayAsk: boolean) => {
+    const { value, cost } = await settle(first, (a) => toStart(a, mayAsk));
+    if (value.kind === 'ask') return emit({ type: 'ask', ask: value.ask, model, cost });
+    if (value.kind === 'lesson') return emit({ type: 'lesson', lesson: value.lesson, model, cost });
+    emit({ type: 'outline', course: value.course, model, cost });
+    await writeCourse(value.course, 0, 0);
+  };
+
   if (!rec) {
-    const first = await run(`新的一課。學生問：${req.question}`, undefined, { any: false });
-    const { value, cost } = await settle(first, toLesson);
-    emit({ type: 'lesson', lesson: value, model, cost });
+    const wish = req.askFirst ? '\n（學生打開了「先問我」：這次先用 "ask" 問清楚再教。）' : '';
+    await begin(await run(`新的一課。學生問：${req.question}${wish}`, undefined, { any: false }), true);
+    return;
+  }
+
+  // Resumes the lesson's session, or starts a new one from `fresh()` when it cannot be resumed.
+  const resumeOr = async (prompt: string, fresh: () => string) => {
+    if (rec.session) {
+      const shown = { any: false };
+      try {
+        return await run(prompt, rec.session, shown);
+      } catch (e) {
+        // A session Claude Code no longer has (or one that broke) starts over from the outline,
+        // unless the learner already saw part of this answer.
+        if (shown.any) throw e;
+        console.error(`resume failed, starting a new session: ${e instanceof Error ? e.message : e}`);
+        setPhase('正在重新讀這一課…');
+      }
+    }
+    return run(fresh(), undefined, { any: false });
+  };
+
+  if (req.answers) {
+    const reply = answersText(rec.ask, req.answers);
+    const asked = rec.ask ? `你先問了學生：\n${rec.ask.questions.map((q) => `- ${q.text}（${q.options.join('／')}）`).join('\n')}\n` : '';
+    await begin(await resumeOr(reply, () => `新的一課。學生問：${rec.question}\n${asked}${reply}`), false);
+    return;
+  }
+
+  if (req.course) {
+    const course = rec.course;
+    const from = courseWritten(rec);
+    if (!course || from >= course.outline.length) throw new Error('這一課沒有還沒寫的章節');
+    // a resumed session only needs the next chapter asked; a new one first reads the lesson so far
+    const plan = course.outline.map((c, k) => `${k + 1}. ${c.title}：${c.goal}`).join('\n');
+    const intro = `這是一堂整課「${course.title}」，你在新的對話裡接手，接下來會一章一章寫下去。課綱：\n${plan}\n\n已經寫好的內容（步驟前的數字是視覺用的步驟編號）：\n\n${outline(chs)}`;
+    await writeCourse(course, from, chs.length, (p) => resumeOr(p, () => `${intro}\n\n${p}`));
     return;
   }
 
   const ask = `${where(chs, at)}\n學生追問：${req.question}`;
   const fresh = `這是一堂已經在上的課，你在新的對話裡接手。以下是到目前為止的內容（步驟前的數字是視覺用的步驟編號）：\n\n${outline(chs)}\n\n要看某一章現在的完整視覺與步驟，用 read_chapter。\n\n${ask}`;
-  let result;
-  if (rec.session) {
-    const shown = { any: false };
-    try {
-      result = await run(ask, rec.session, shown);
-    } catch (e) {
-      // A session Claude Code no longer has (or one that broke) starts over from the outline,
-      // unless the learner already saw part of this answer.
-      if (shown.any) throw e;
-      console.error(`resume failed, starting a new session: ${e instanceof Error ? e.message : e}`);
-      setPhase('正在重新讀這一課…');
-    }
-  }
-  result ??= await run(fresh, undefined, { any: false });
+  const result = await resumeOr(ask, () => fresh);
   const { value, cost } = await settle(result, (a) => toPart(a, req.question, chs, at));
   emit({ type: 'part', part: value, model, cost });
 }

@@ -107,7 +107,8 @@ export interface Lesson {
   suggestions: string[];
 }
 
-export type Status = 'generating' | 'ready' | 'error';
+/** asking: Claude asked the learner questions and waits for their answers */
+export type Status = 'generating' | 'asking' | 'ready' | 'error';
 
 /** What one generation cost, as Claude Code reports it (API prices, also on a subscription). */
 export interface Cost {
@@ -144,12 +145,32 @@ export interface Part {
   /** text: the reply */
   text?: string;
   suggestions?: string[];
+  /** chapter: one of the course's planned chapters (question holds its goal), not a follow-up */
+  course?: boolean;
   model?: string;
   cost?: Cost;
 }
 
+/** Before a new lesson is taught, Claude may ask the learner a few questions. */
+export interface AskQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  /** several options may be picked */
+  multi?: boolean;
+}
+export interface Ask { text?: string; questions: AskQuestion[] }
+/** The learner's answer to one question; an empty list of answers means they skipped. */
+export interface Answer { question: string; answer: string }
+
+/** A lesson taught as a whole course: Claude plans the chapters, then writes them one by one. */
+export interface Course {
+  title: string;
+  outline: { title: string; goal: string }[];
+}
+
 /** What Claude streams before it finishes: enough to show the reply as it is written. */
-export type Draft = Partial<Lesson> & { mode?: Mode; text?: string };
+export type Draft = Partial<Lesson> & { mode?: Mode | 'ask' | 'course'; text?: string };
 
 /** A follow-up still being written, or one that failed. */
 export interface Pending {
@@ -159,6 +180,8 @@ export interface Pending {
   at?: number;
   draft?: Draft;
   error?: string;
+  /** the course's next chapter, being written (or failed) */
+  course?: boolean;
 }
 
 /** A lesson as stored on disk by the backend. */
@@ -180,6 +203,12 @@ export interface LessonRecord {
   names?: Record<string, string>;
   /** the Claude Code session the lesson was written in; follow-ups resume it */
   session?: string;
+  /** the questions Claude asked before teaching */
+  ask?: Ask;
+  /** what the learner answered (empty when they skipped) */
+  answers?: Answer[];
+  /** set when the lesson is a whole course */
+  course?: Course;
 }
 
 /** The light summary used by the sidebar and home. */

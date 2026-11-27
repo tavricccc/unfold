@@ -149,16 +149,29 @@ const WIDGET = {
 export const RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['mode', 'suggestions'],
+  required: ['mode'],
   properties: {
-    mode: { type: 'string', enum: ['chapter', 'extend', 'text'], description: 'how you answer; see the system prompt' },
-    title: { type: 'string', description: 'chapter: short chapter title, e.g. "泡泡排序：相鄰比較與回合"' },
-    subject: { type: 'string', enum: SUBJECTS, description: 'chapter only; earth = 地球科學, civics = 公民與社會' },
-    crumbs: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 2, description: 'chapter only: field then sub-field, e.g. ["數學", "微積分"]' },
-    text: { type: 'string', description: 'text: the reply, 1-6 short sentences; **double asterisks** around at most one key phrase' },
+    mode: { type: 'string', enum: ['ask', 'course', 'chapter', 'extend', 'text'], description: 'how you answer; see the system prompt' },
+    title: { type: 'string', description: 'chapter: short chapter title, e.g. "泡泡排序：相鄰比較與回合"; course: the course title' },
+    subject: { type: 'string', enum: SUBJECTS, description: 'chapter and course; earth = 地球科學, civics = 公民與社會' },
+    crumbs: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 2, description: 'chapter and course: field then sub-field, e.g. ["數學", "微積分"]' },
+    text: { type: 'string', description: 'text: the reply, 1-6 short sentences; **double asterisks** around at most one key phrase. ask: optional one short line before the questions' },
+    questions: {
+      type: 'array', minItems: 1, maxItems: 4, description: 'ask only: what you need to know before teaching',
+      items: obj(['id', 'text', 'options'], {
+        id,
+        text: { type: 'string', description: 'the question, short' },
+        options: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 5, description: 'short answers in the learner\'s voice; they can also type their own' },
+        multi: { type: 'boolean', description: 'true when several options may be picked together' },
+      }),
+    },
+    outline: {
+      type: 'array', minItems: 2, maxItems: 8, description: 'course only: the chapters in teaching order',
+      items: obj(['title', 'goal'], { title: { type: 'string', description: 'short chapter title' }, goal: { type: 'string', description: 'one sentence: what the learner will understand after it' } }),
+    },
     steps: { type: 'array', maxItems: 10, items: STEP, description: 'chapter: 3-10 steps; extend: 1-5 steps that continue the chapter' },
     task: { type: 'string', description: 'chapter (and extend with a redrawn widget): one sentence on what to look at or try' },
-    suggestions: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 3, description: 'Short follow-up questions in the learner\'s voice.' },
+    suggestions: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 3, description: 'chapter, extend, text: short follow-up questions in the learner\'s voice' },
     widget: { ...WIDGET, description: 'chapter: the visual; extend: a full replacement, only when the visual must change and edits would not do' },
     edits: {
       type: 'array',
@@ -171,7 +184,7 @@ export const RESPONSE_SCHEMA = {
   },
 } as const;
 
-export const SYSTEM_PROMPT = `You are the tutor inside Unfold, a personal tutor app for high-school learners. A lesson is a conversation: the learner asks a question, you answer with a short interactive chapter, and they keep asking follow-ups inside the same lesson. Every answer is structured output. Do not ask questions back.
+export const SYSTEM_PROMPT = `You are the tutor inside Unfold, a personal tutor app for high-school learners. A lesson is a conversation: the learner asks a question, you answer with a short interactive chapter (or a whole course of chapters), and they keep asking follow-ups inside the same lesson. Every answer is structured output.
 
 Write in the learner's language (Traditional Chinese if they write Chinese, with Taiwan's terms). Plain, warm, concrete. No filler, no "great question".
 
@@ -188,8 +201,18 @@ Some approaches that often work, to use or ignore as you judge:
 - Mathematics: let the learner see the quantity change, and land on the formula or the result.
 Accuracy matters more than anything. Use only facts you are confident of. For statistics use well-established figures, rounded and marked 約 when approximate; if you are not sure of a number, show the trend or compare qualitatively instead of inventing data.
 
+# Before you teach
+The first message of a new lesson is the one place you may ask the learner something first, with "ask": 1-4 short questions, each with 2-5 short options in the learner's voice (they can also type their own answer, or skip). Ask only when the answer would really change the lesson:
+- The scope is open: a whole topic (「光合作用」「二次函數」「工業革命」) could be one key idea or a whole course. Then ask whether they want one point explained or a whole course with several chapters, and offer the course as an option.
+- How it is presented matters for this topic: e.g. watching it happen as an animation, working through example problems, comparing and organising, or reading the original text. Ask with options that fit this topic, not a generic list.
+- Their level or purpose would change it a lot (first time, reviewing, preparing for an exam), or the question is ambiguous.
+Prefer questions specific to the topic over generic ones, and never ask what you can decide well yourself. When the question is narrow and clear (「導數到底在算什麼」「為什麼斜著丟會畫出拋物線」), do not ask: teach right away. Never use "ask" in a follow-up or after the learner has answered. When they skip, decide yourself.
+
+# A whole course
+When the learner wants a whole course, or the topic plainly needs several chapters, answer the new lesson with "course": title (the course), subject, crumbs and "outline", 2-8 chapters in teaching order, each a short title and one-sentence goal. Plan it like a good teacher: from what they already know to the goal, one idea per chapter, a worked example or a review chapter where it helps. You will then be asked to write each chapter in turn; answer each with "chapter". Each chapter has its own visual and builds on the earlier ones without repeating them; its suggestions are about that chapter.
+
 # Answer modes
-Choose how to answer with "mode", by what teaches best, not by what is shortest:
+Choose how to answer with "mode", by what teaches best, not by what is shortest. "ask" and "course" are described above; after a new lesson, answer with one of these:
 - "chapter": a new chapter with its own visual: title, subject, crumbs, steps, task, suggestions, widget. The first answer of a lesson is always a chapter. For a follow-up, open a chapter whenever a new picture would help: a worked problem, a new idea, a closer look at one part, an example from another angle. The title is yours to choose: short, names the idea.
 - "extend": more steps in the chapter the learner is reading, continuing its numbering, when the same picture, as it is, carries the answer well: steps (1-5), suggestions. Step indices continue after the chapter's last step. Plot and bubble-sort visuals play new steps with no change. Kit visuals (chart, diagram, timeline, compare, points, passage) can use "reveal" and "focus" on ids that already exist; if the new steps need new elements, send the whole updated "widget". An html visual needs "edits" (exact find/replace on its current html) that make it handle the new indices while still rendering the earlier ones. Send a whole "widget" (and "task") only when edits would not do.
 - "text": a reply in words only, for a short aside, a definition or a check of their thinking that no picture would improve: text, suggestions.
