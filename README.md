@@ -2,7 +2,7 @@
 
 <h1 align="center">Unfold</h1>
 
-<p align="center"><b>Unfold：翻開你想學的所有知識</b></p>
+<p align="center"><b>翻開你想學的所有知識</b></p>
 
 <p align="center">用你電腦上的 <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a> 當家教：問一個問題，它會一步一步展開成一堂配有互動視覺的課。</p>
 
