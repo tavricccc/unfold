@@ -729,6 +729,13 @@
     });
     return list;
   }
+  /** A connection whose two ends are both in focus is in focus too. */
+  function focusBetween(edgeEls, focus) {
+    edgeEls.forEach(({ e, g, lab }) => {
+      if (!focus.has(e.from) || !focus.has(e.to) || g.classList.contains('u-hid')) return;
+      for (const x of lab ? [g, lab] : [g]) { x.classList.add('u-focus'); x.classList.remove('u-dim'); }
+    });
+  }
   /** Hovering a node lights up its edges and neighbours. */
   function hoverLinks(els, edgeEls) {
     for (const nid in els) {
@@ -807,7 +814,7 @@
       });
       hoverLinks(els, edgeEls);
       missing(reg, steps);
-      apply = stepper(reg, eff);
+      apply = stepper(reg, eff, (_, focus) => focusBetween(edgeEls, focus));
       apply(Math.max(0, U.step));
     });
     replayHandlers.push((idx) => { redraw(edgeEls); apply(idx); });
@@ -956,6 +963,7 @@
       hoverLinks(els, edgeEls);
       missing(reg, steps);
       apply = stepper(reg, eff, (_, focus) => {
+        focusBetween(edgeEls, focus);
         // a focused group keeps its own components and connections lit; a focused component keeps its group's frame
         focus.forEach((id) => {
           if (grpEls[id]) {
