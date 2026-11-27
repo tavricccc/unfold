@@ -284,6 +284,8 @@ code.ic { font-family: var(--mono); font-size: .88em; background: var(--sub); pa
 /* ---------- home ---------- */
 .home { display: flex; flex-direction: column; justify-content: center; padding: 0 48px 56px; overflow: auto; }
 .home .col { width: 100%; max-width: 720px; margin: 0 auto; }
+/* the composer's menus open over the rows below it; each row animates in its own stacking context */
+.home .col > .ask { position: relative; z-index: 2; }
 .home .col > * { animation: para-in .38s var(--spring) both; }
 .home .col > *:nth-child(2) { animation-delay: 40ms; }
 .home .col > *:nth-child(3) { animation-delay: 70ms; }
