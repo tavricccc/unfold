@@ -141,7 +141,7 @@ fn list_lessons(app: AppHandle) -> Result<Vec<Value>, String> {
     out.push(json!({
       "id": rec["id"], "question": rec["question"], "status": rec["status"],
       "createdAt": rec["createdAt"], "step": rec["step"],
-      "title": l["title"], "subject": l["subject"],
+      "title": if rec["course"]["title"].is_string() { &rec["course"]["title"] } else { &l["title"] }, "subject": l["subject"],
       "total": l["steps"].as_array().map(|a| a.len() + more_steps(&rec)),
     }));
   }
@@ -381,7 +381,7 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
           }
           let _ = app2.emit("lesson-event", json!({ "id": id2, "type": "partial", "lesson": ev["lesson"], "more": more }));
         }
-        Some("ask") | Some("outline") | Some("next") => {
+        Some("ask") | Some("outline") => {
           let kind = ev["type"].as_str().unwrap_or_default();
           match read_record(&app2, &id2) {
             Ok(mut r) => {
@@ -391,16 +391,13 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
                   r["status"] = json!("asking");
                   r["ask"] = ev["ask"].clone();
                 }
-                "outline" => r["course"] = ev["course"].clone(),
-                _ => r["pending"] = json!({ "question": ev["question"], "status": "generating", "at": ev["at"], "course": true }),
+                _ => r["course"] = ev["course"].clone(),
               }
-              if kind != "next" {
-                if let Some(o) = r.as_object_mut() {
-                  o.remove("draft");
-                }
-                r["model"] = ev["model"].clone();
-                r["cost"] = add_cost(&r["cost"], &ev["cost"]);
+              if let Some(o) = r.as_object_mut() {
+                o.remove("draft");
               }
+              r["model"] = ev["model"].clone();
+              r["cost"] = add_cost(&r["cost"], &ev["cost"]);
               if let Err(e) = write_record(&app2, &id2, &r) {
                 return fail(format!("無法儲存課程：{e}"));
               }
@@ -440,6 +437,10 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
                 }
                 r["model"] = ev["model"].clone();
                 r["cost"] = add_cost(&r["cost"], &ev["cost"]);
+              }
+              // a course goes straight on to its next chapter
+              if ev["next"].is_object() {
+                r["pending"] = json!({ "question": ev["next"]["question"], "status": "generating", "at": ev["next"]["at"], "course": true });
               }
               if let Err(e) = write_record(&app2, &id2, &r) {
                 return fail(format!("無法儲存課程：{e}"));

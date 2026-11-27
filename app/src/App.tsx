@@ -40,7 +40,7 @@ export default function App() {
 
   const ask = async (question: string) => {
     try {
-      const id = await api.startLesson(question, genOf(settings));
+      const id = await api.startLesson(question, genOf(settings), settings.askFirst);
       refresh();
       setView({ name: 'lesson', id });
     } catch (e) {

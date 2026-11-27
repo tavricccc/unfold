@@ -449,3 +449,47 @@ h2.chap-t:hover .ren, .ren:focus-visible { opacity: 1; }
   padding: 6px 6px 6px 14px; border-radius: var(--r-md); background: var(--raise); font-size: 13px; color: var(--fg-2);
   box-shadow: 0 0 0 1px var(--line), 0 10px 28px -12px rgb(16 32 40 / .3); animation: menu-in .16s var(--ease);
 }
+
+/* ---------- asking first, whole courses ---------- */
+.chip.tg svg { margin: 0 -2px 0 -3px; opacity: 1; }
+.chip.tg.on, .chip.tg.on:hover { background: var(--acc-soft); color: var(--acc-ink); }
+
+.qbody { min-height: 0; overflow-y: auto; scrollbar-width: thin; padding: 0 24px; }
+.qcol { max-width: 620px; margin: 0 auto; padding: 7vh 0 32px; display: flex; flex-direction: column; animation: para-in .4s var(--ease) both; }
+.qcol > .asked { margin-top: 0; }
+.qlead { font-size: 15px; line-height: 1.8; color: var(--fg-2); margin: 6px 0 8px; }
+.qq { border: 0; margin: 22px 0 0; padding: 0; min-width: 0; }
+.qq legend { font-size: 15.5px; font-weight: 500; color: var(--fg); margin-bottom: 12px; padding: 0; }
+.qm { font-size: 12px; font-weight: 400; color: var(--fg-3); margin-left: 8px; }
+.qopts { display: flex; flex-wrap: wrap; gap: 8px; }
+.opt {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; font-size: 14px;
+  color: var(--fg-2); background: var(--raise); box-shadow: 0 0 0 1px var(--line-2);
+  transition: background-color .15s, color .15s, box-shadow .15s, transform .18s var(--ease);
+}
+.opt svg { margin-left: -4px; }
+.opt:not(:disabled):hover { color: var(--fg); box-shadow: 0 0 0 1px var(--fg-3); transform: translateY(-1px); }
+.opt:not(:disabled):active { transform: scale(.98); }
+.opt.on, .opt.on:hover { background: var(--acc-soft); color: var(--acc-ink); box-shadow: 0 0 0 1.5px var(--acc); }
+.own {
+  font: inherit; font-size: 14px; color: var(--fg); background: transparent; border: 0; outline: 0;
+  padding: 7px 12px; border-radius: 999px; width: 150px; box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow .15s, width .2s var(--ease);
+}
+.own::placeholder { color: var(--fg-4); }
+.own:focus { width: 230px; box-shadow: 0 0 0 1.5px var(--acc), 0 0 0 4px var(--acc-soft); }
+.qgo { display: flex; align-items: center; gap: 14px; margin-top: 34px; }
+.qgo .primary:disabled { opacity: .45; cursor: default; filter: none; box-shadow: none; transform: none; }
+.go.skip { color: var(--fg-3); font-weight: 500; }
+.go.skip:hover { color: var(--fg); }
+
+.goal { font-size: 12.5px; color: var(--fg-3); margin: 18px 0 6px; line-height: 1.5; }
+.outline { margin: 6px 0 18px; }
+.outline ol { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.outline li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 6px 0; font-size: 13.5px; animation: para-in .4s var(--ease) both; }
+.outline li .no { color: var(--fg-3); padding-top: 1px; }
+.outline li b { display: block; font-weight: 500; color: var(--fg); }
+.outline li span span { color: var(--fg-3); font-size: 12.5px; }
+.folded.todo { color: var(--fg-4); cursor: default; }
+.folded.todo:hover { background: none; color: var(--fg-4); }
+.folded.todo .go { font-size: 12.5px; padding: 2px 0 2px 6px; }

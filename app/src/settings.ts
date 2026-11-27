@@ -8,10 +8,11 @@ export type Model = 'sonnet' | 'opus' | 'haiku';
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
-export interface Settings { theme: Theme; accent: Accent; model: Model; effort: Effort }
+/** askFirst: always ask the learner before teaching a new lesson (otherwise Claude decides) */
+export interface Settings { theme: Theme; accent: Accent; model: Model; effort: Effort; askFirst: boolean }
 
 const KEY = 'unfold.settings';
-const DEFAULTS: Settings = { theme: 'system', accent: 'orange', model: 'sonnet', effort: 'low' };
+const DEFAULTS: Settings = { theme: 'system', accent: 'orange', model: 'sonnet', effort: 'low', askFirst: false };
 
 function load(): Settings {
   try {

@@ -15,9 +15,10 @@
 //        { "type": "partial", "lesson": Draft }                mode, title, steps or text so far
 //        { "type": "ask", "ask": Ask, "model", "cost" }        questions for the learner; the run ends
 //        { "type": "outline", "course": Course, "model", "cost" }  a course's plan; chapters follow
-//        { "type": "lesson", "lesson": Lesson, "model", "cost" }   the first chapter
-//        { "type": "next", "question": string, "at": number }  a course chapter after the first is being written
-//        { "type": "part", "part": Part, "model", "cost" }         a follow-up's answer, or a course chapter
+//        { "type": "lesson", "lesson": Lesson, "model", "cost", "next"? }   the first chapter
+//        { "type": "part", "part": Part, "model", "cost", "next"? }         a follow-up's answer, or a course chapter
+//          "next": { "question": string, "at": number }, the course chapter written next, so the
+//          lesson never shows the course as stopped between two chapters
 //        { "type": "error", "message": string }
 // Env: UNFOLD_CLAUDE_PATH, the Claude Code executable to drive (set by the app).
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk';
@@ -303,13 +304,12 @@ async function main() {
     for (let k = from; k < n; k++) {
       prefix = `第 ${k + 1} / ${n} 章 · `;
       setPhase('正在想怎麼教…');
-      const at = written - 1;
-      if (k > 0) emit({ type: 'next', question: course.outline[k].goal, at });
       const r = k === from && first ? await first(chapterAsk(course, k)) : await run(chapterAsk(course, k), sid, { any: false });
       const { value, cost } = await settle(r, toLesson);
-      if (k === 0) emit({ type: 'lesson', lesson: value, model, cost });
-      else emit({ type: 'part', part: { question: course.outline[k].goal, mode: 'chapter', course: true, lesson: value, suggestions: value.suggestions }, model, cost });
       written++;
+      const next = k + 1 < n ? { question: course.outline[k + 1].goal, at: written - 1 } : undefined;
+      if (k === 0) emit({ type: 'lesson', lesson: value, model, cost, next });
+      else emit({ type: 'part', part: { question: course.outline[k].goal, mode: 'chapter', course: true, lesson: value, suggestions: value.suggestions }, model, cost, next });
     }
   };
 
