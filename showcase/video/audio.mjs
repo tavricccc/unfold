@@ -2,8 +2,11 @@
 // film's sections, plus sound effects on the cues the film wrote down while it was captured.
 // Usage: node audio.mjs <cues.json> <out.wav>
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
-const [, , cuesFile = 'R:/unfold-video/cues.json', out = 'R:/unfold-video/music.wav'] = process.argv;
+const WORK = process.env.FILM_WORK ?? path.join(os.tmpdir(), 'unfold-video');
+const [, , cuesFile = path.join(WORK, 'cues.json'), out = path.join(WORK, 'music.wav')] = process.argv;
 const cues = JSON.parse(fs.readFileSync(cuesFile, 'utf8'));
 const SR = 48000, LEN = 60, N = SR * LEN;
 const L = new Float32Array(N), R = new Float32Array(N);         // dry mix

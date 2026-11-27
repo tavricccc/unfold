@@ -2,9 +2,10 @@
 // saves every answer with its cost, time and any repair. Spends API credit.
 // Usage: bun eval/run.ts <outDir> [model=sonnet] [effort=low] [concurrency=4] [only=comma-separated indices]
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
-const [out = 'R:/unfold-eval/run', model = 'sonnet', effort = 'low', conc = '4', only] = process.argv.slice(2);
+const [out = path.join(os.tmpdir(), 'unfold-eval', 'run'), model = 'sonnet', effort = 'low', conc = '4', only] = process.argv.slice(2);
 const qs: string[] = JSON.parse(fs.readFileSync(path.join(import.meta.dir, 'questions.json'), 'utf8'));
 const pick = only ? only.split(',').map(Number) : qs.map((_, i) => i);
 fs.mkdirSync(out, { recursive: true });

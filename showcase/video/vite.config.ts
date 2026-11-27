@@ -1,3 +1,4 @@
+import os from 'os';
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -21,7 +22,7 @@ export default defineConfig({
   ],
   resolve: { alias: { '@app': appSrc } },
   build: {
-    outDir: process.env.FILM_OUT ?? 'R:/unfold-video/dist', emptyOutDir: true, chunkSizeWarningLimit: 4000,
+    outDir: process.env.FILM_OUT ?? path.join(process.env.FILM_WORK ?? path.join(os.tmpdir(), 'unfold-video'), 'dist'), emptyOutDir: true, chunkSizeWarningLimit: 4000,
     rollupOptions: { input: { film: path.resolve(here, 'film.html'), app: path.resolve(here, 'app.html') } },
   },
 });

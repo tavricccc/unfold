@@ -2,16 +2,19 @@
 // Usage: node capture.mjs [--from s] [--to s] [--dsf 2] [--fps 60] [--out file.mp4] [--stills dir --every n]
 import { spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { launch, openPage } from './cdp.mjs';
 import { serve } from './serve.mjs';
 
+const WORK = process.env.FILM_WORK ?? path.join(os.tmpdir(), 'unfold-video');
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const FROM = +arg('from', 0), TO = +arg('to', 60), DSF = +arg('dsf', 2), FPS = +arg('fps', 60);
-const OUT = arg('out', 'R:/unfold-video/film.mp4'), STILLS = arg('stills'), EVERY = +arg('every', 30);
+const OUT = arg('out', path.join(WORK, 'film.mp4')), STILLS = arg('stills'), EVERY = +arg('every', 30);
 const W = 1920, H = 1080;
 
-const srv = await serve(process.env.FILM_OUT ?? 'R:/unfold-video/dist');
-const b = await launch({ width: W, height: H, dsf: DSF, userDataDir: `R:/unfold-video/prof-cap-${process.pid}` });
+const srv = await serve(process.env.FILM_OUT ?? path.join(WORK, 'dist'));
+const b = await launch({ width: W, height: H, dsf: DSF, userDataDir: path.join(WORK, `prof-cap-${process.pid}`) });
 const queue = [];
 const p = await openPage(b, { url: `${srv.url}/film.html?capture=1`, width: W, height: H, dsf: DSF, onBinding: (c) => queue.push(c) });
 const s = p.s;
@@ -64,7 +67,8 @@ for (let f = 0; f < total; f++) {
   if (process.env.DBG && process.env.DBG.split(',').includes(String(f))) console.log(f, await p.evaluate('window.__dbg()'));
   if (f % 300 === 0) console.log(`frame ${f}/${total}  ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
-fs.writeFileSync('R:/unfold-video/cues.json', await p.evaluate('window.__cues()'));
+fs.mkdirSync(WORK, { recursive: true });
+fs.writeFileSync(path.join(WORK, 'cues.json'), await p.evaluate('window.__cues()'));
 if (ff) { ff.stdin.end(); await new Promise((r) => ff.on('exit', r)); }
 b.close(); srv.close();
 console.log('done', ((Date.now() - t0) / 1000).toFixed(0) + 's');

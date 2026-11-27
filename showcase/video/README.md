@@ -11,10 +11,10 @@ person.
 ```sh
 node showcase/video/prep.mjs          # optional: refresh data/lessons.json from the app's lesson folder
 cd showcase/video
-node node_modules/vite/bin/vite.js build     # → R:/unfold-video/dist (FILM_OUT to change)
-node capture.mjs --dsf 2 --out R:/unfold-video/film-v.mp4   # 1080p, plus -4k.mp4 from the 2x frames
-node audio.mjs R:/unfold-video/cues.json R:/unfold-video/music.wav
-ffmpeg -i R:/unfold-video/film-v.mp4 -i R:/unfold-video/music.wav -c:v copy -c:a aac -b:a 256k -shortest out/unfold.mp4
+node node_modules/vite/bin/vite.js build     # outputs to $TMPDIR/unfold-video/dist (set FILM_OUT / FILM_WORK to override)
+node capture.mjs --dsf 2 --out ./out/film-v.mp4   # 1080p, plus -4k.mp4 from the 2x frames
+node audio.mjs                        # reads cues.json from FILM_WORK (or $TMPDIR/unfold-video) and writes music.wav
+ffmpeg -i ./out/film-v.mp4 -i <work>/music.wav -c:v copy -c:a aac -b:a 256k -shortest out/unfold.mp4
 ```
 
 `node_modules` here is a junction to `app/node_modules` (`mklink /J showcase\video\node_modules app\node_modules`).
