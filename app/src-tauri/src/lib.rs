@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,10 +10,6 @@ use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(not(windows))]
 use std::os::unix::process::CommandExt;
-#[cfg(not(windows))]
-use std::sync::{mpsc, OnceLock};
-#[cfg(not(windows))]
-use std::time::{Duration, Instant};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 #[cfg(windows)]
@@ -121,163 +117,19 @@ fn sidecar_command() -> Command {
   }
 }
 
-/// Reads the user's interactive login shell PATH once (with a 4s timeout) so GUI launches from
-/// Finder find version-managed CLIs like nvm, fnm, volta, asdf, mise, or Homebrew.
-#[cfg(not(windows))]
-fn login_shell_paths() -> &'static [PathBuf] {
-  static CACHE: OnceLock<Vec<PathBuf>> = OnceLock::new();
-  CACHE.get_or_init(|| {
-    let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/zsh".into());
-    let marker = "__UNFOLD_PATH__";
-    let cmd_str = format!("printf '{marker}%s{marker}' \"$PATH\"");
-    let Ok(mut child) = Command::new(shell)
-      .args(["-ilc", &cmd_str])
-      .stdin(Stdio::null())
-      .stdout(Stdio::piped())
-      .stderr(Stdio::null())
-      .spawn()
-    else {
-      return Vec::new();
-    };
-    let rx = child.stdout.take().map(|mut stdout| {
-      let (tx, rx) = mpsc::channel();
-      std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let mut chunk = [0u8; 4096];
-        loop {
-          match std::io::Read::read(&mut stdout, &mut chunk) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => {
-              buf.extend_from_slice(&chunk[..n]);
-              let s = String::from_utf8_lossy(&buf);
-              if let Some((_, rest)) = s.split_once(marker) {
-                if rest.contains(marker) {
-                  break;
-                }
-              }
-            }
-          }
-        }
-        let _ = tx.send(buf);
-      });
-      rx
-    });
-    let deadline = Instant::now() + Duration::from_millis(4000);
-    loop {
-      match child.try_wait() {
-        Ok(Some(_)) => break,
-        Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
-        _ => {
-          let _ = child.kill();
-          let _ = child.wait();
-          return Vec::new();
-        }
-      }
-    }
-    let bytes = rx
-      .and_then(|r| r.recv_timeout(deadline.saturating_duration_since(Instant::now())).ok())
-      .unwrap_or_default();
-    let stdout = String::from_utf8_lossy(&bytes);
-    let Some((_, rest)) = stdout.split_once(marker) else { return Vec::new() };
-    let Some((raw, _)) = rest.split_once(marker) else { return Vec::new() };
-    std::env::split_paths(raw).filter(|p| !p.as_os_str().is_empty() && p.is_dir()).collect()
-  })
-}
-
-/// Static fallback CLI directories checked on macOS/Unix if the login shell query yields nothing.
-#[cfg(not(windows))]
-fn cli_bin_dirs() -> Vec<PathBuf> {
-  let home = std::env::var_os("HOME").map(PathBuf::from);
-  let mut dirs = Vec::new();
-  if let Some(ref h) = home {
-    dirs.push(h.join(".local/bin"));
-    dirs.push(h.join(".claude/local"));
-    dirs.push(h.join(".local/share/mise/shims"));
-    dirs.push(h.join(".volta/bin"));
-    dirs.push(h.join(".asdf/shims"));
-    dirs.push(h.join(".bun/bin"));
-    dirs.push(h.join("Library/pnpm"));
-  }
-  dirs.push(PathBuf::from("/opt/homebrew/bin"));
-  dirs.push(PathBuf::from("/usr/local/bin"));
-  if let Some(ref h) = home {
-    dirs.push(h.join(".npm-global/bin"));
-  }
-  dirs.into_iter().filter(|d| d.is_dir()).collect()
-}
-
-/// Builds a PATH with `bin`'s directory first, followed by login-shell PATH ahead of bare system
-/// directories (`/usr`, `/bin`, `/sbin`) on Finder launches (or inherited PATH first otherwise), and
-/// static fallback directories appended so `claude` and `#!/usr/bin/env node` work from Finder.
-#[cfg(not(windows))]
-fn with_cli_path(cmd: &mut Command, bin: Option<&Path>) {
-  let current = std::env::var_os("PATH").unwrap_or_default();
-  let existing: Vec<PathBuf> = std::env::split_paths(&current).filter(|p| !p.as_os_str().is_empty()).collect();
-  let mut dirs: Vec<PathBuf> = Vec::new();
-  let mut push_unique = |dir: PathBuf| {
-    if !dir.as_os_str().is_empty() && !dirs.contains(&dir) {
-      dirs.push(dir);
-    }
-  };
-  if let Some(parent) = bin.and_then(|p| p.parent()) {
-    if parent.is_dir() {
-      push_unique(parent.to_path_buf());
-    }
-  }
-  let bare_system = existing.iter().all(|p| {
-    let s = p.to_string_lossy();
-    s.starts_with("/usr/") || s.starts_with("/bin") || s.starts_with("/sbin")
-  });
-  if bare_system {
-    for dir in login_shell_paths() {
-      push_unique(dir.clone());
-    }
-    for dir in existing {
-      push_unique(dir);
-    }
-  } else {
-    for dir in existing {
-      push_unique(dir);
-    }
-    for dir in login_shell_paths() {
-      push_unique(dir.clone());
-    }
-  }
-  for dir in cli_bin_dirs() {
-    push_unique(dir);
-  }
-  if let Ok(joined) = std::env::join_paths(dirs) {
-    cmd.env("PATH", joined);
-  }
-}
-
-/// No-op on Windows where GUI apps already inherit the user's configured PATH.
-#[cfg(windows)]
-fn with_cli_path(_cmd: &mut Command, _bin: Option<&Path>) {}
-
 /// Finds the learner's own Claude Code so the Agent SDK drives it instead of a bundled copy.
 fn claude_path() -> Option<PathBuf> {
   let finder = if cfg!(windows) { "where" } else { "which" };
-  let mut probe = Command::new(finder);
-  probe.arg("claude");
-  with_cli_path(&mut probe, None);
-  if let Ok(out) = hidden(&mut probe).output() {
+  if let Ok(out) = hidden(Command::new(finder).arg("claude")).output() {
     if out.status.success() {
       if let Some(line) = String::from_utf8_lossy(&out.stdout).lines().map(str::trim).find(|l| l.ends_with(".exe") || !cfg!(windows)) {
         return Some(PathBuf::from(line));
       }
     }
   }
-  #[cfg(windows)]
-  {
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
-    let p = PathBuf::from(home).join(".local").join("bin").join("claude.exe");
-    p.exists().then_some(p)
-  }
-  #[cfg(not(windows))]
-  {
-    login_shell_paths().iter().cloned().chain(cli_bin_dirs()).map(|d| d.join("claude")).find(|p| p.is_file())
-  }
+  let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
+  let p = PathBuf::from(home).join(".local").join("bin").join(if cfg!(windows) { "claude.exe" } else { "claude" });
+  p.exists().then_some(p)
 }
 
 fn kill_tree(pid: u32) {
@@ -391,9 +243,7 @@ fn cancel_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String) -> Result
 async fn claude_status() -> Result<String, String> {
   tauri::async_runtime::spawn_blocking(|| {
     let bin = claude_path().ok_or("找不到 claude")?;
-    let mut cmd = Command::new(&bin);
-    with_cli_path(&mut cmd, Some(&bin));
-    let out = hidden(&mut cmd).arg("--version").output().map_err(|e| format!("找不到 claude：{e}"))?;
+    let out = hidden(&mut Command::new(&bin)).arg("--version").output().map_err(|e| format!("找不到 claude：{e}"))?;
     if !out.status.success() {
       return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -541,11 +391,9 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
       Ok(d) => { cmd.current_dir(d); }
       Err(e) => log::warn!("no sessions folder, using the default: {e}"),
     }
-    let claude = claude_path();
-    if let Some(ref p) = claude {
+    if let Some(p) = claude_path() {
       cmd.env("UNFOLD_CLAUDE_PATH", p);
     }
-    with_cli_path(&mut cmd, claude.as_deref());
     #[cfg(not(windows))]
     cmd.process_group(0);
     let mut child = match hidden(&mut cmd)
