@@ -8,6 +8,8 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
+#[cfg(not(windows))]
+use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 #[cfg(windows)]
@@ -109,8 +111,9 @@ fn sidecar_command() -> Command {
     c.arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("sidecar").join("agent.ts"));
     c
   } else {
-    let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("unfold-agent.exe")));
-    Command::new(exe.unwrap_or_else(|| PathBuf::from("unfold-agent.exe")))
+    let name = if cfg!(windows) { "unfold-agent.exe" } else { "unfold-agent" };
+    let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join(name)));
+    Command::new(exe.unwrap_or_else(|| PathBuf::from(name)))
   }
 }
 
@@ -133,7 +136,7 @@ fn kill_tree(pid: u32) {
   #[cfg(windows)]
   let r = hidden(&mut Command::new("taskkill")).args(["/T", "/F", "/PID", &pid.to_string()]).output();
   #[cfg(not(windows))]
-  let r = Command::new("kill").args(["-TERM", &pid.to_string()]).output();
+  let r = Command::new("kill").args(["-TERM", &format!("-{pid}")]).output();
   if let Err(e) = r {
     log::error!("could not stop sidecar {pid}: {e}");
   }
@@ -237,13 +240,17 @@ fn cancel_lesson(app: AppHandle, jobs: tauri::State<Jobs>, id: String) -> Result
 }
 
 #[tauri::command]
-fn claude_status() -> Result<String, String> {
-  let bin = claude_path().ok_or("找不到 claude")?;
-  let out = hidden(&mut Command::new(bin)).arg("--version").output().map_err(|e| format!("找不到 claude：{e}"))?;
-  if !out.status.success() {
-    return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-  }
-  Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+async fn claude_status() -> Result<String, String> {
+  tauri::async_runtime::spawn_blocking(|| {
+    let bin = claude_path().ok_or("找不到 claude")?;
+    let out = hidden(&mut Command::new(&bin)).arg("--version").output().map_err(|e| format!("找不到 claude：{e}"))?;
+    if !out.status.success() {
+      return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+  })
+  .await
+  .map_err(|e| format!("檢查 claude 失敗：{e}"))?
 }
 
 fn more_steps(rec: &Value) -> usize {
@@ -387,6 +394,8 @@ fn spawn_job(app2: AppHandle, id2: String, req: Value) {
     if let Some(p) = claude_path() {
       cmd.env("UNFOLD_CLAUDE_PATH", p);
     }
+    #[cfg(not(windows))]
+    cmd.process_group(0);
     let mut child = match hidden(&mut cmd)
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())

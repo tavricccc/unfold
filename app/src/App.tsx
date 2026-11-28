@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from './api';
+import { api, isMacApp } from './api';
 import type { LessonMeta } from './lesson';
 import { CommandPalette } from './components/CommandPalette';
 import { ShortcutsModal } from './components/ShortcutsModal';
@@ -108,7 +108,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app${settings.sidebarOpen ? '' : ' side-off'}`}>
+    <div className={`app${isMacApp ? ' mac' : ''}${settings.sidebarOpen ? '' : ' side-off'}`}>
       <TitleBar sidebarOpen={settings.sidebarOpen} onToggleSidebar={() => update({ sidebarOpen: !settings.sidebarOpen })} />
       <Sidebar
         lessons={lessons} view={view} go={setView} claude={claude}

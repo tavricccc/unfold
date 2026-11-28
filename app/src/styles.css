@@ -100,11 +100,15 @@ code.ic { font-family: var(--mono); font-size: .88em; background: var(--sub); pa
   display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: 32px minmax(0, 1fr); height: 100vh;
   transition: grid-template-columns .28s var(--spring);
 }
+.app.mac { grid-template-rows: 44px minmax(0, 1fr); }
 .app.side-off { grid-template-columns: 0px minmax(0, 1fr); }
 .app.side-off .panel { margin-left: 8px; }
 
 /* the window's own title bar: the sidebar's ground, carried across the top */
 .tbar { grid-column: 1 / -1; display: flex; align-items: stretch; user-select: none; transition: opacity .2s; }
+.tbar.mac { padding-left: 80px; }
+.tbar.mac.fs { padding-left: 0; }
+.tbar.mac .tb-side { height: 28px; align-self: center; }
 .tbar.blur { opacity: .62; }
 .tb-side {
   width: 40px; margin-left: 6px; display: grid; place-items: center; color: var(--fg-3);
